@@ -1,0 +1,21 @@
+# For more info on HTTP files go to https://aka.ms/vs/httpfile
+POST http://localhost:5043/test-book-save
+Content-Type: application/json
+
+{
+  "Title": "The Great Gatsby",
+  "Genre": 1,
+  "TotalPages": 180,
+  "InterestLevel": 3
+}
+###
+GET http://localhost:5043/books/2
+###
+DELETE http://localhost:5043/books/1
+###
+PUT http://localhost:5043/books/2/progress
+Content-Type: application/json
+
+{
+  "CurrentPage": 150
+}
