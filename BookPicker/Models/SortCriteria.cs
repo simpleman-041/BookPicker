@@ -3,7 +3,7 @@
     /// <summary>
     /// 本の並び替え基準を表す列挙型。
     /// </summary>
-    public enum BookSortField
+    public enum SortField
     {
         Title = 0,
         TotalPages = 1,
@@ -23,15 +23,15 @@
     /// 本の並び替え基準と順序を表すクラス。
     /// これをサービスに渡すことで、指定された基準と順序で本のリストを並び替えることができる設計にする。
     /// </summary>
-    public class BookSortCriteria
+    public class SortCriteria
     {
         // 並び替え基準が指定されている場合は、昇順か降順かを指定する必要がある。
-        public BookSortField Field { get; private set; }
-        public SortOrder     Order { get; private set; }
+        public SortField Field { get; private set; }
+        public SortOrder Order { get; private set; }
 
-        public BookSortCriteria(BookSortField field, SortOrder order)
+        public SortCriteria(SortField field, SortOrder order)
         {
-            if (!Enum.IsDefined(typeof(BookSortField), field))
+            if (!Enum.IsDefined(typeof(SortField), field))
             {
                 throw new ArgumentException("並び替え基準に不正な値が指定されました。", nameof(field));
             }

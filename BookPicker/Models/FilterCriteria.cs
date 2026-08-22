@@ -10,7 +10,7 @@
     /// <summary>
     /// 本のフィルタリング条件を表すクラス。
     /// </summary>
-    public class BookFilterCriteria
+    public class FilterCriteria
     {
         public bool?           IsCompleted    { get; private set; } = null;
         public Genre?          Genre          { get; private set; } = null;
@@ -21,7 +21,7 @@
         public string?         SearchTitle    { get; private set; } = null;
         public TitleMatchMode? TitleMatchMode { get; private set; } = null;
 
-        public BookFilterCriteria(
+        public FilterCriteria(
             bool?           isCompleted,   
             Genre?          genre,        
             int?            minPages,     

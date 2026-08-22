@@ -71,6 +71,45 @@ public partial class Program
             return Results.Ok($"Book '{book.Title}' updated successfully.");
         });
 
+        app.MapGet("/books/filter-and-sort",async (
+            [AsParameters] FilterRequest filterRequest,
+            [AsParameters] SortRequest sortRequest,
+            BookPickerDbContext dbContext) =>
+        {
+            var filterRequestModel = new FilterCriteria(
+                filterRequest.IsCompleted,
+                filterRequest.Genre,
+                filterRequest.MinPages,
+                filterRequest.MaxPages,
+                filterRequest.ReadingStatus,
+                filterRequest.InterestLevel,
+                filterRequest.SearchTitle,
+                filterRequest.TitleMatchMode
+            );
+
+            
+
+
+            var books = await dbContext.Books.ToListAsync();
+            var filterService = new FilterService();
+            var filteredBooks = filterService.FilterBooks(books, filterRequestModel);
+
+            if (sortRequest.IsValid == false) return Results.BadRequest();
+            if (sortRequest.Field.HasValue == false && sortRequest.Order.HasValue == false) return Results.Ok(filteredBooks); 
+            
+            var sortService = new SortService();
+            var sortRequestModel = new SortCriteria(
+            sortRequest.Field.Value,
+            sortRequest.Order.Value
+            );
+            
+            var filteredSortedBooks = sortService.SortBooks(filteredBooks, sortRequestModel);
+            return Results.Ok(filteredSortedBooks);
+            
+
+            
+        });
+
         app.Run();
     }
 }

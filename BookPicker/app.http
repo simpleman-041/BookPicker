@@ -3,15 +3,15 @@ POST http://localhost:5043/test-book-save
 Content-Type: application/json
 
 {
-  "Title": "The Great Gatsby",
-  "Genre": 1,
-  "TotalPages": 180,
-  "InterestLevel": 3
+  "Title": "The Great Gatsby3",
+  "Genre": 5,
+  "TotalPages": 1000,
+  "InterestLevel": 2
 }
 ###
 GET http://localhost:5043/books/2
 ###
-DELETE http://localhost:5043/books/1
+DELETE http://localhost:5043/books/4
 ###
 PUT http://localhost:5043/books/2/progress
 Content-Type: application/json
@@ -19,3 +19,12 @@ Content-Type: application/json
 {
   "CurrentPage": 150
 }
+### 1. 条件なし
+GET http://localhost:5043/books/filter-and-sort
+### 2. Sortだけ
+GET http://localhost:5043/books/filter-and-sort?field=Title&order=Ascending
+### 3. Filter + Sort
+GET http://localhost:5043/books/filter-and-sort?minPages=100&field=TotalPages&order=Descending
+### 4. Sort条件を片方だけ指定
+GET http://localhost:5043/books/filter-and-sort?field=Title
+

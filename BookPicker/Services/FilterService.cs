@@ -5,9 +5,9 @@ namespace BookPicker.Services
     /// <summary>
     /// 受け取った本のリストとフィルタリング条件に基づいて、本のリストをフィルタリングするサービスクラス。
     /// </summary>
-    public class BookFilterService
+    public class FilterService
     {
-        public IEnumerable<Book> FilterBooks(IEnumerable<Book> books, BookFilterCriteria criteria)
+        public IEnumerable<Book> FilterBooks(IEnumerable<Book> books, FilterCriteria criteria)
         {
             var filteredBooks = books;
             if (criteria.IsCompleted.HasValue)

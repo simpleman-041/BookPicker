@@ -5,15 +5,15 @@ namespace BookPicker.Services
     /// <summary>
     /// 本の一覧と並び替え条件を受取り、条件に従って並び替えた本の一覧を返す。
     /// </summary>
-    public class BookSortService 
+    public class SortService 
     {
-        public IEnumerable<Book> SortBooks(IEnumerable<Book> books, BookSortCriteria criteria)
+        public IEnumerable<Book> SortBooks(IEnumerable<Book> books, SortCriteria criteria)
         {
             var sortedBooks = books;
 
             // 並び替え基準で分岐したのち、昇順、降順の指定に基づいて並び替えを行う。
             // 最終防衛線として、想定外の値が指定された場合はInvalidOperationExceptionをスローする。   
-            if (criteria.Field == BookSortField.Title)
+            if (criteria.Field == SortField.Title)
             {
                 sortedBooks = criteria.Order switch
                 {
@@ -22,7 +22,7 @@ namespace BookPicker.Services
                     _ => throw new InvalidOperationException("並び替え順序に不正な値が指定されました。")
                 };
             }
-            else if (criteria.Field == BookSortField.TotalPages)
+            else if (criteria.Field == SortField.TotalPages)
             {
                 sortedBooks = criteria.Order switch
                 {
@@ -31,7 +31,7 @@ namespace BookPicker.Services
                     _ => throw new InvalidOperationException("並び替え順序に不正な値が指定されました。")
                 };
             }
-            else if (criteria.Field == BookSortField.InterestLevel)
+            else if (criteria.Field == SortField.InterestLevel)
             {
                 sortedBooks = criteria.Order switch
                 {
@@ -40,7 +40,7 @@ namespace BookPicker.Services
                     _ => throw new InvalidOperationException("並び替え順序に不正な値が指定されました。")
                 };
             }
-            else if (criteria.Field == BookSortField.ReadingStatus)
+            else if (criteria.Field == SortField.ReadingStatus)
             {
                 sortedBooks = criteria.Order switch
                 {
