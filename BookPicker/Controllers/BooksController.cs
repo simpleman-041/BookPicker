@@ -46,16 +46,24 @@ namespace BookPicker.Controllers
         [HttpPost]
         public async Task<IActionResult> CreateBook(CreateBookRequest createBookRequest)
         {
-            var book = new Book
-            (
-                createBookRequest.Title,
-                createBookRequest.Genre,
-                createBookRequest.TotalPages,
-                createBookRequest.InterestLevel
-            );
-            _dbContext.Books.Add(book);
-            await _dbContext.SaveChangesAsync();
-            return CreatedAtAction(nameof(GetBook), new { id = book.Id }, book);
+            try
+            {
+                var book = new Book(
+                    createBookRequest.Title,
+                    createBookRequest.Genre,
+                    createBookRequest.TotalPages,
+                    createBookRequest.InterestLevel
+                    );
+                _dbContext.Books.Add(book);
+                await _dbContext.SaveChangesAsync();
+                return CreatedAtAction(nameof(GetBook), new { id = book.Id }, book);
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(ex.Message);
+            }
+            
+            
         }
 
         [HttpPut("{id}/progress")]
@@ -66,7 +74,17 @@ namespace BookPicker.Controllers
             {
                 return NotFound();
             }
-            book.UpdateCurrentPageAndReadingStatus(updateCurrentPageRequest.CurrentPage);
+            
+            // 現在ページが総ページを超える、負の値といった矛盾したケースを想定
+            try
+            {
+                book.UpdateCurrentPageAndReadingStatus(updateCurrentPageRequest.CurrentPage);
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(ex.Message);
+            }
+
             await _dbContext.SaveChangesAsync();
             return NoContent();
         }

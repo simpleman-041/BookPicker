@@ -33,6 +33,10 @@ public partial class Program
 
         app.UseAuthorization();
 
+        app.UseDefaultFiles();
+
+        app.UseStaticFiles();
+
         app.MapControllers();
 
         app.Run();

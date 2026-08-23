@@ -5,7 +5,7 @@ Content-Type: application/json
 {
   "Title": "The Great Gatsby4",
   "Genre": 6,
-  "TotalPages": 30,
+  "TotalPages": 1000000,
   "InterestLevel": 4
 }
 

@@ -29,33 +29,33 @@
             // 空、null、空白文字列のタイトルは許容しない。また、タイトルの長さは100文字以内に制限する。
             if (string.IsNullOrWhiteSpace(title))
             {
-                throw new ArgumentException(nameof(title), "タイトルは空白にできません。");
+                throw new ArgumentException("タイトルは空白にできません。", nameof(title));
             }
             if (title.Length > 100)
             {
-                throw new ArgumentException(nameof(title), "タイトルは100文字以内で入力してください。");
+                throw new ArgumentException("タイトルは100文字以内で入力してください。", nameof(title));
             }
 
             // 列挙型はnullを許容しないため、nullチェックは不要。ただし、定義されていない値を防ぐ必要がある。
             if (!Enum.IsDefined(typeof(Genre), genre))
             {
-                throw new ArgumentException(nameof(genre), "ジャンルに不正な値が指定されました。");
+                throw new ArgumentException("ジャンルに不正な値が指定されました。", nameof(genre));
             }
 
             // 総ページ数は1以上10000以下の値を許容する。0以下や10000を超える値は不正とする。
             if (totalPages <= 0)
             {
-                throw new ArgumentException(nameof(totalPages), "総ページ数は1以上の値を入力してください。");
+                throw new ArgumentException("総ページ数は1以上の値を入力してください。", nameof(totalPages));
             }
             if (totalPages > 10000)
             {
-                throw new ArgumentException(nameof(totalPages), "総ページ数は10000以下の値を入力してください。");
+                throw new ArgumentException("総ページ数は10000以下の値を入力してください。", nameof(totalPages));
             }
 
             // これも列挙型なのでnullチェックは不要。ただし、定義されていない値を防ぐ必要がある。
             if (!Enum.IsDefined(typeof(InterestLevel), interestLevel))
             {
-                throw new ArgumentException(nameof(interestLevel), "興味レベルに不正な値が指定されました。");
+                throw new ArgumentException("興味レベルに不正な値が指定されました。", nameof(interestLevel));
             }
             Title = title;
             Genre         = genre;
@@ -72,11 +72,11 @@
             // IsCompletedの更新はここでは行わない。UI側でユーザーの入力に応じてSetIsCompletedメソッドを呼び出すことで更新するからだ。
             if (currentPage < 0)
             {
-                throw new ArgumentException(nameof(currentPage), "現在ページ数は0以上の値を入力してください。");
+                throw new ArgumentException("現在ページ数は0以上の値を入力してください。",nameof(currentPage));
             }
             else if (currentPage > TotalPages)
             {
-                throw new ArgumentException(nameof(currentPage), "現在ページ数は総ページ数を超えることはできません。"    );
+                throw new ArgumentException("現在ページ数は総ページ数を超えることはできません。" , nameof(currentPage));
             }
 
             CurrentPage = currentPage;
