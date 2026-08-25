@@ -1,121 +1,81 @@
-今回は Book モデルのドメインロジック拡張だけを実装してください。
+今回は、LastReadAt と CoverImagePath をSQLiteへ反映するための EF Core Migration を生成し、その内容を確認してください。
 
-最初に docs/bookpicker_codex_current_spec.md と現在の Book.cs、既存テストを確認してください。
+最初に docs/bookpicker_codex_current_spec.md、現在の Book.cs、既存Migration、DbContext を確認してください。
 
-今回の作業対象は Book モデルと、そのドメインロジックを検証するテストだけです。
+今回の目的はMigrationファイルを生成して内容を検証することです。
 
-Controller、Request、Service、JavaScript、HTML、CSS、Migration、DbContext、データベース本体は変更しないでください。
+database update は実行しないでください。
 
-今回実装する内容は以下です。
+SQLiteデータベース本体を変更しないでください。
 
-Book に nullable な LastReadAt を追加してください。
+Controller、Request、Service、JavaScript、HTML、CSSなど、Migrationに直接必要のない本番コードは変更しないでください。
 
-LastReadAt は、新しい CurrentPage が変更前の CurrentPage より大きい場合だけ現在のUTC日時へ更新してください。
+現在の Book モデルには nullable な LastReadAt と nullable な CoverImagePath が追加されています。
 
-CurrentPage が同じ場合は LastReadAt を更新しないでください。
+この2つを既存SQLiteデータベースへ追加するための新しいMigrationを生成してください。
 
-CurrentPage が減少した場合も LastReadAt を更新しないでください。
+LastReadAt は nullable な日時列として扱ってください。
 
-このルールは、将来どのAPIから CurrentPage が変更されても一貫して適用できるよう、可能な限り Book のドメインロジック側で管理してください。
+CoverImagePath は nullable な文字列列として扱ってください。
 
-新規作成された Book の LastReadAt は null としてください。
+既存レコードについては、どちらも null で移行できる構成にしてください。
 
-Book に nullable な CoverImagePath を追加してください。
+既存データを推測して埋める処理は追加しないでください。
 
-CoverImagePath が null、空文字、空白だけの場合は null として保持してください。
+CreatedAt やその他の新しい列は追加しないでください。
 
-第一完成版では CoverImagePath として、アプリ内相対パスまたは http、https の画像URLを扱う想定です。
+既存の列の型や制約を、今回の目的と関係なく変更しないでください。
 
-Windowsのローカルファイルパスを直接扱う必要はありません。
+Migration生成後、生成されたMigrationファイルとModelSnapshotを確認してください。
 
-CoverImagePath の詳細なURL検証や画像ファイルの存在確認は今回実装しないでください。
+確認する内容は以下です。
 
-Book の既存 private setter とカプセル化を維持してください。
+LastReadAt だけが意図したnullable日時列として追加されていること。
 
-一般編集APIを将来実装するために、Book の編集可能項目を安全に更新できるドメインメソッドを追加してください。
+CoverImagePath だけが意図したnullable文字列列として追加されていること。
 
-対象は Title、Genre、TotalPages、CurrentPage、InterestLevel、CoverImagePath です。
+不要な列追加や列削除が発生していないこと。
 
-各値を途中状態で順番に反映して検証するのではなく、リクエストされた最終状態全体の整合性を先に検証し、すべて有効な場合だけ状態を変更してください。
+既存列の型や制約が意図せず変更されていないこと。
 
-例えば、現在 TotalPages が500、CurrentPageが400のBookを、TotalPagesが300、CurrentPageが250へ同時に変更することは有効です。
+Down処理によって、今回追加した2列だけを元に戻せること。
 
-最終状態として CurrentPage が TotalPages 以下だからです。
+ModelSnapshotが現在のBookモデルと整合していること。
 
-逆に、最終状態で CurrentPage が TotalPages を超える場合は拒否してください。
+Migration生成後に dotnet build と dotnet test を実行してください。
 
-既存の Title、Genre、TotalPages、CurrentPage、InterestLevel の入力検証ルールは変更せず再利用してください。
+既存43件のテストがすべて成功することを確認してください。
 
-編集の結果 CurrentPage が TotalPages 未満になった場合は IsCompleted を false にしてください。
+Migration生成のために外部パッケージの復元などが必要になった場合は、必要性を確認してから実行してください。
 
-編集の結果 CurrentPage が TotalPages と等しくなった場合でも IsCompleted を自動的に true にはしないでください。
+database update は絶対に実行しないでください。
 
-ReadingStatus は編集後の最終状態から既存ルールに従って再計算してください。
-
-一般編集によって CurrentPage が増加した場合にも LastReadAt を更新してください。
-
-CurrentPage が減少または同じ場合は更新しないでください。
-
-既存の SetIsCompleted の挙動変更は今回は行わないでください。読了API対応時に別タスクとして扱います。
-
-今回追加した仕様について自動テストを追加してください。
-
-少なくとも以下をテストしてください。
-
-新規Bookの LastReadAt が null であること。
-
-CurrentPage を増加させると LastReadAt が設定されること。
-
-LastReadAt がUTCの現在時刻として妥当な範囲に入っていること。
-
-CurrentPage を同じ値に更新しても LastReadAt が変わらないこと。
-
-CurrentPage を減少させても LastReadAt が変わらないこと。
-
-一般編集で CurrentPage が増加した場合にも LastReadAt が更新されること。
-
-一般編集で CurrentPage が減少または同じ場合は LastReadAt が更新されないこと。
-
-CoverImagePath が null、空文字、空白の場合に null として保持されること。
-
-CoverImagePath に通常の値を指定した場合に保持されること。
-
-TotalPages と CurrentPage を同時に有効な最終状態へ変更できること。
-
-最終状態で CurrentPage が TotalPages を超える編集が拒否され、Bookの既存状態が途中まで変更されないこと。
-
-編集後に CurrentPage が TotalPages 未満になった場合、IsCompleted が false になること。
-
-編集によって最終ページへ到達しても IsCompleted が自動的に true にならないこと。
-
-編集後に ReadingStatus が正しく再計算されること。
-
-既存の24件のテストもすべて再実行してください。
-
-実装後に dotnet build と dotnet test を実行してください。
-
-既存テストが失敗した場合は、そのテストを削除したり期待値を変更して通さないでください。
-
-原因を調査し、本番コードの変更による回帰であれば報告してください。
+データベースファイルを直接編集しないでください。
 
 今回の作業終了時に以下を報告してください。
 
-変更したファイル。
+生成したMigration名。
 
-Book に追加したプロパティとドメインメソッド。
+作成または変更したファイル。
 
-追加したテスト。
+MigrationのUp処理で行われる変更。
+
+MigrationのDown処理で行われる変更。
+
+ModelSnapshotに反映された内容。
+
+既存データへの影響。
 
 dotnet build の結果。
 
 dotnet test の結果。
 
-既存24テストがすべて維持されたか。
+既存43件のテストがすべて維持されたか。
 
-実装中に見つかった仕様上または設計上の問題。
+Migration内容に不審な変更や想定外の差分がないか。
 
-次のMigration段階へ進む前に確認すべき事項。
+database update を実行する前に確認すべき事項。
 
 ここまで完了したら停止してください。
 
-Migrationの生成や適用、ControllerやAPIの変更、フロントエンド実装には進まないでください。
+database update、Controller変更、API追加、フロントエンド実装には進まないでください。
