@@ -1,13 +1,131 @@
 ﻿<!DOCTYPE html>
-<html>
+<html lang="ja">
 <head>
     <meta charset="utf-8" />
-    <title>Book Picker</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Yondoku</title>
+    <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
-    <h1>Book Picker</h1>
+    <header class="app-header">
+        <div class="app-header__brand" aria-label="Yondoku ホーム">Yondoku</div>
 
-    <ul id="book-list"></ul>
+        <div class="title-search" role="search" aria-label="タイトル検索">
+            <label class="visually-hidden" for="title-search">タイトル</label>
+            <input
+                id="title-search"
+                name="searchTitle"
+                type="search"
+                placeholder="タイトル検索"
+                autocomplete="off" />
+            <button id="title-search-button" class="icon-button" type="button" aria-label="タイトルを検索">
+                <span aria-hidden="true"></span>
+            </button>
+        </div>
+
+        <fieldset class="match-mode" aria-label="タイトルの一致方法">
+            <legend class="visually-hidden">タイトルの一致方法</legend>
+            <label>
+                <input type="radio" name="titleMatchMode" value="partial" checked />
+                <span>部分一致</span>
+            </label>
+            <label>
+                <input type="radio" name="titleMatchMode" value="exact" />
+                <span>完全一致</span>
+            </label>
+        </fieldset>
+
+        <button id="add-book-button" class="primary-button" type="button">＋ 本を追加</button>
+    </header>
+
+    <nav class="quick-filters" aria-label="クイック条件">
+        <button class="quick-filter is-active" type="button" data-quick-filter="all" aria-pressed="true">すべて</button>
+        <button class="quick-filter" type="button" data-quick-filter="interest" aria-pressed="false">興味のある順</button>
+        <button class="quick-filter" type="button" data-quick-filter="nearly-finished" aria-pressed="false">もう少しで読了</button>
+        <button class="quick-filter" type="button" data-quick-filter="long" aria-pressed="false">たっぷり読む</button>
+        <button class="quick-filter" type="button" data-quick-filter="short" aria-pressed="false">短めに読む</button>
+        <button class="quick-filter" type="button" data-quick-filter="recently-read" aria-pressed="false">最近読んだ</button>
+    </nav>
+
+    <main class="workspace">
+        <aside class="filter-sidebar" aria-labelledby="filter-heading">
+            <div class="filter-sidebar__heading">
+                <p class="filter-sidebar__eyebrow">こまかく検索</p>
+                <h1 id="filter-heading">詳細フィルター</h1>
+            </div>
+
+            <div class="filter-field">
+                <label for="interest-level">InterestLevel</label>
+                <select id="interest-level" name="interestLevel">
+                    <option value="">指定なし</option>
+                </select>
+            </div>
+
+            <div class="filter-field">
+                <label for="genre">Genre</label>
+                <select id="genre" name="genre">
+                    <option value="">すべてのジャンル</option>
+                </select>
+            </div>
+
+            <div class="filter-field">
+                <label for="reading-status">ReadingStatus</label>
+                <select id="reading-status" name="readingStatus">
+                    <option value="">すべての状態</option>
+                </select>
+            </div>
+        </aside>
+
+        <section class="book-list-section" aria-labelledby="book-list-heading">
+            <div class="section-heading">
+                <div>
+                    <p class="section-heading__eyebrow">MY LIBRARY</p>
+                    <h2 id="book-list-heading">本の一覧</h2>
+                </div>
+            </div>
+
+            <ul id="book-list" class="book-grid" aria-label="登録されている本" aria-live="polite"></ul>
+
+            <template id="book-card-template">
+                <li class="book-grid__item">
+                    <button class="book-card" type="button">
+                        <span class="book-card__cover">
+                            <img class="book-card__cover-image" src="" alt="" loading="lazy" />
+                        </span>
+                        <span class="book-card__body">
+                            <span class="book-card__title"></span>
+                            <span class="book-card__progress-text">
+                                <span class="book-card__current-page"></span>
+                                <span aria-hidden="true"> / </span>
+                                <span class="book-card__total-pages"></span>
+                                <span class="visually-hidden">ページ</span>
+                            </span>
+                            <span
+                                class="book-card__progress"
+                                role="progressbar"
+                                aria-valuemin="0"
+                                aria-valuemax="100"
+                                aria-valuenow="0">
+                                <span class="book-card__progress-value"></span>
+                            </span>
+                        </span>
+                    </button>
+                </li>
+            </template>
+        </section>
+
+        <aside
+            id="book-detail-panel"
+            class="detail-panel"
+            aria-labelledby="detail-panel-heading"
+            hidden>
+            <header class="detail-panel__header">
+                <h2 id="detail-panel-heading">本の詳細</h2>
+                <button class="icon-button detail-panel__close" type="button" aria-label="詳細パネルを閉じる">×</button>
+            </header>
+            <div id="book-detail-content" class="detail-panel__content"></div>
+        </aside>
+    </main>
 
     <script src="js/app.js"></script>
 </body>

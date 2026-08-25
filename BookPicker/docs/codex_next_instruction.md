@@ -1,175 +1,136 @@
-今回は、現行仕様に必要なバックエンドAPIと一覧取得処理を実装してください。
+今回は Yondoku のフロントエンド実装の第一段階として、一覧画面のHTML構造とCSSによる基本レイアウトを実装してください。
 
-最初に docs/bookpicker_codex_current_spec.md、現在の Book.cs、BooksController.cs、Request関連クラス、FilterとSort関連クラス、既存テストを確認してください。
+最初に docs/bookpicker_codex_current_spec.md、現在の wwwroot/index.html、wwwroot/js/app.js、wwwroot/css/style.css を確認してください。
 
-今回の作業対象は、Controller、Request、FilterとSortに必要なバックエンド処理、およびそれらを検証するテストです。
+docs/ui フォルダに最新のFigma画面設計画像が存在する場合は、それも参考にしてください。
+その画像は docs/ui/figma_design.pngにあります。
 
-JavaScript、HTML、CSSなどのフロントエンドは変更しないでください。
+今回は画面の骨組みと見た目を作ることを目的とします。
 
-新しいMigrationは生成しないでください。
+Controller、Request、Service、Bookモデル、DbContext、Migration、SQLiteデータベースなどのバックエンドは変更しないでください。
 
-database updateは実行しないでください。
+APIの仕様も変更しないでください。
 
-SQLiteデータベース本体のデータを追加、変更、削除しないでください。
+今回JavaScriptへ大規模な機能追加は行わないでください。
 
-今回実装する内容は以下です。
+現時点の画面表示名は Yondoku とします。
 
-一般編集APIとして PUT /api/books/{id} を追加してください。
+プロジェクト内部のBookPickerという名称は変更しないでください。
 
-一般編集APIでは、Title、Genre、TotalPages、CurrentPage、InterestLevel、CoverImagePath を受け取れるRequestクラスを用意してください。
+PC向け一覧画面として、以下の構造を作成してください。
 
-ReadingStatus、LastReadAt、IsCompleted は一般編集Requestから直接変更できないようにしてください。
+上部ヘッダーには Yondoku の表示名を配置してください。
 
-更新処理では、現在Bookに実装されている UpdateDetails のドメインロジックを利用してください。
+上部中央付近にタイトル検索用の入力欄を配置してください。
 
-Bookのprivate setterをpublicへ変更しないでください。
+タイトル検索の近くに、部分一致と完全一致を選択できるUIを配置してください。
 
-存在しないidの場合は 404 Not Found としてください。
+上部にはクイック条件を配置できる領域を作成してください。
 
-ユーザー入力によってBookのドメイン検証に失敗した場合は 400 Bad Request としてください。
+クイック条件として以下を表示してください。
 
-更新成功時は 204 No Content としてください。
+すべて
 
-一般編集によってCurrentPageが増加した場合のLastReadAt更新は、既存のBookドメインロジックに任せ、Controller側で同じ処理を重複実装しないでください。
+興味のある順
 
-次に、読了状態を変更する専用APIを追加してください。
+もう少しで読了
 
-URLは PUT /api/books/{id}/completion としてください。
+たっぷり読む
 
-Request Bodyでは isCompleted に true または false を指定できるようにしてください。
+短めに読む
 
-trueの場合、CurrentPageがTotalPagesと一致している場合だけ読了にできるようにしてください。
+最近読んだ
 
-CurrentPageがTotalPages未満の状態でtrueを指定した場合は 400 Bad Request としてください。
+今回はこれらのボタンの検索や並び替え動作はまだ実装しないでください。
 
-falseの場合は読了解除として扱ってください。
+左側には詳細フィルター用のサイドバーを作成してください。
 
-成功時は 204 No Content としてください。
+詳細フィルターとして以下のselectを配置してください。
 
-存在しないidの場合は 404 Not Found としてください。
+InterestLevel
 
-現在の SetIsCompleted は最終ページ未到達時にtrueを指定しても何もしない実装になっています。
+Genre
 
-現行仕様ではこの操作を400とする必要があるため、Book側で不正な読了操作を明確に検出できるよう、必要最小限の変更を行ってください。
+ReadingStatus
 
-既存の読了ルールやReadingStatus計算を単純化しないでください。
+選択肢の具体的なデータ連携は今回実装しなくて構いません。
 
-既存の PUT /api/books/{id}/progress は維持してください。
+中央には本カード一覧を表示する領域を作成してください。
 
-CurrentPage更新によるLastReadAtの更新は、すでにBook側の UpdateCurrentPageAndReadingStatus に含まれているため、そのドメインロジックを利用してください。
+本カードは将来的に以下を表示する前提で設計してください。
 
-存在しないidは404、CurrentPageの不正値は400という現在のAPIルールを維持してください。
+表紙画像
 
-新規登録APIについて、CreateBookRequest に nullable な CoverImagePath を追加してください。
+タイトル
 
-POST /api/books でBookを生成するときに CoverImagePath を渡せるようにしてください。
+現在ページ / 総ページ
 
-CoverImagePathを指定しない既存リクエストも正常に動作するようにしてください。
+進捗バー
 
-新規Bookの LastReadAt は引き続き null としてください。
+カード全体を将来的に選択可能にできるHTML構造にしてください。
 
-次に GET /api/books の既定順を変更してください。
+ただし今回は右側詳細パネルを開くJavaScript処理までは実装しないでください。
 
-明示的な並び替えが指定されていない場合は Id の降順で返してください。
+右側には、将来的に本の詳細表示、編集、新規登録で共用するパネル領域を用意してください。
 
-データベースや列の自然な取得順には依存しないでください。
+初期状態では非表示または空の状態で構いません。
 
-既存のタイトル検索、Genre、ReadingStatus、InterestLevelなどのフィルター機能は維持してください。
+ヘッダー付近には本を追加するためのボタンを配置してください。
 
-クイック条件で使用するため、LastReadAt を並び替え対象へ追加してください。
+今回はボタンを押したときの新規登録処理は実装しないでください。
 
-LastReadAt降順の場合は、日時が新しい本から表示し、LastReadAtがnullの本は最後にしてください。
+既存のstyle.cssがindex.htmlから読み込まれていない場合は、適切に読み込むようにしてください。
 
-既存の TotalPages、InterestLevel などの並び替えは壊さないでください。
+既存のapp.jsについて、今回のレイアウト変更によってエラーになる部分がある場合は、必要最小限の調整だけ行ってください。
 
-TotalPages降順は「たっぷり読む」、TotalPages昇順は「短めに読む」で将来使用しますが、今回はフロントエンドのクイックボタン自体は実装しないでください。
+まだ詳細表示、編集、新規登録、削除、検索、フィルター、クイック条件の実際のJavaScript処理には進まないでください。
 
-FilterRequest、FilterCriteria、SortRequest、SortCriteriaなどのユーザー入力検証で ArgumentException などが発生した場合に、500 Internal Server Errorではなく400 Bad Requestを返すようにしてください。
+デザインは添付されたFigma案を基本としてください。
 
-既存の正常なFilterとSortの挙動は維持してください。
+完全なピクセル単位の再現よりも、以下を優先してください。
 
-MinPagesとMaxPagesは現行UIでは使用しませんが、今回は削除しないでください。
+情報の階層が分かりやすいこと。
 
-BookPicker.httpなどの古いHTTP例やテンプレートファイルの整理は今回の作業対象外です。
+HTML構造が後からJavaScriptで操作しやすいこと。
 
-今回の仕様について自動テストを追加してください。
+CSSが必要以上に複雑にならないこと。
 
-少なくとも以下を確認してください。
+デスクトップ幅で自然に表示されること。
 
-PUT /api/books/{id} で正常な編集が成功すること。
+将来的にレスポンシブ対応しやすい構造であること。
 
-存在しないidの一般編集が404になること。
+React、Vue、TypeScript、CSSフレームワークは導入しないでください。
 
-不正な一般編集が400になること。
-
-一般編集からReadingStatus、LastReadAt、IsCompletedを直接設定できないRequest設計になっていること。
-
-一般編集でCurrentPageが増加するとLastReadAtが更新されること。
-
-一般編集でCurrentPageが減少または同じ場合はLastReadAtが更新されないこと。
-
-PUT /api/books/{id}/completion で最終ページ到達済みの本を読了にできること。
-
-最終ページ未到達で読了にしようとすると400になること。
-
-読了解除が成功すること。
-
-存在しないidの読了操作が404になること。
-
-POST /api/books でCoverImagePathを指定できること。
-
-CoverImagePath未指定でも既存どおり登録できること。
-
-GET /api/books の並び替え未指定時にId降順になること。
-
-LastReadAt降順で新しい日時が先になること。
-
-LastReadAtがnullの本がLastReadAt降順では後ろになること。
-
-既存のTotalPagesとInterestLevelなどの並び替えが維持されていること。
-
-不正なFilterまたはSort入力が400になり、500にならないこと。
-
-既存43件のテストもすべて再実行してください。
-
-必要であれば、テストには実運用DBではない一時的なSQLiteデータベースまたは適切なテスト用構成を使用してください。
-
-実運用中のSQLiteデータベースのBookデータをテストのために変更しないでください。
+HTML、CSS、Vanilla JavaScriptの範囲を維持してください。
 
 実装後に dotnet build と dotnet test を実行してください。
 
-既存テストが失敗した場合は、期待値を変更したりテストを削除して無理に通さないでください。
+既存67件のテストがすべて成功することを確認してください。
 
-今回の変更による回帰か、現行仕様との不一致かを調査してください。
+可能であればアプリを起動せずに、HTML、CSS、JavaScript間で存在しないIDや要素を参照していないか静的に確認してください。
 
-今回の作業終了時に以下を報告してください。
+作業終了時に以下を報告してください。
 
 変更したファイル。
 
-新規作成したRequestクラス。
+作成した画面構造。
 
-追加または変更したAPI。
+主要なHTML要素とそれぞれの役割。
 
-Bookモデルに行った変更とその理由。
+CSSの主要なレイアウト方針。
 
-一覧取得と並び替えに行った変更。
+JavaScriptへ加えた変更がある場合はその内容。
 
-エラー処理に行った変更。
-
-追加したテスト。
+Figma設計から変更した点と理由。
 
 dotnet build の結果。
 
 dotnet test の結果。
 
-既存43件のテストがすべて維持されたか。
+既存67件のテストが維持されたか。
 
-新しく追加したテストがすべて成功したか。
-
-実装中に発見した仕様上または設計上の問題。
-
-フロントエンド実装へ進む前に確認すべき事項。
+次の本カード一覧の動的生成へ進む前に確認すべき事項。
 
 ここまで完了したら停止してください。
 
-JavaScript、HTML、CSS、画面実装には進まないでください。
+本カードの動的生成、詳細表示、編集、新規登録、検索、フィルター、クイック条件の動作実装にはまだ進まないでください。
