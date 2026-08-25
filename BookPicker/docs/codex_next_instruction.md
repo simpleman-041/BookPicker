@@ -1,70 +1,84 @@
-今回は、LastReadAt と CoverImagePath をSQLiteへ反映するための EF Core Migration を生成し、その内容を確認してください。
+今回は、すでに生成済みの AddLastReadAtAndCoverImagePath Migration を現在のSQLiteデータベースへ適用し、適用結果を確認してください。
 
-最初に docs/bookpicker_codex_current_spec.md、現在の Book.cs、既存Migration、DbContext を確認してください。
+最初に docs/bookpicker_codex_current_spec.md、現在のConnectionString、DbContext、既存Migration、現在のSQLiteデータベースの場所を確認してください。
 
-今回の目的はMigrationファイルを生成して内容を検証することです。
+今回の目的は、すでに生成済みのMigrationを安全に実データベースへ適用することです。
 
-database update は実行しないでください。
+新しいMigrationは生成しないでください。
 
-SQLiteデータベース本体を変更しないでください。
+Book.cs、Controller、Request、Service、JavaScript、HTML、CSSなどの本番コードは変更しないでください。
 
-Controller、Request、Service、JavaScript、HTML、CSSなど、Migrationに直接必要のない本番コードは変更しないでください。
+既存Migrationファイルも変更しないでください。
 
-現在の Book モデルには nullable な LastReadAt と nullable な CoverImagePath が追加されています。
+最初に、現在適用済みのMigrationと未適用のMigrationを確認してください。
 
-この2つを既存SQLiteデータベースへ追加するための新しいMigrationを生成してください。
+今回適用対象となる未適用Migrationが AddLastReadAtAndCoverImagePath だけであることを確認してください。
 
-LastReadAt は nullable な日時列として扱ってください。
+それ以外の想定外の未適用Migrationが存在する場合は database update を実行せず、そこで停止して報告してください。
 
-CoverImagePath は nullable な文字列列として扱ってください。
+次に、現在使用されているSQLiteデータベースファイルを特定してください。
 
-既存レコードについては、どちらも null で移行できる構成にしてください。
+既存データベースが存在する場合は、Migration適用前に同じ場所または安全なバックアップ用の場所へコピーを作成してください。
 
-既存データを推測して埋める処理は追加しないでください。
+バックアップファイルは元のデータベースと区別できる名前にしてください。
 
-CreatedAt やその他の新しい列は追加しないでください。
+既存データベースが見つからない場合や、ConnectionStringから想定外の場所を参照している場合は、新しいデータベースを勝手に作成せず、そこで停止して報告してください。
 
-既存の列の型や制約を、今回の目的と関係なく変更しないでください。
+Migration適用前に、可能な範囲でBooksテーブルの既存レコード数を確認してください。
 
-Migration生成後、生成されたMigrationファイルとModelSnapshotを確認してください。
+その後、既存の AddLastReadAtAndCoverImagePath Migration を database update によって適用してください。
 
-確認する内容は以下です。
+適用後、以下を確認してください。
 
-LastReadAt だけが意図したnullable日時列として追加されていること。
+Booksテーブルに CoverImagePath 列が存在すること。
 
-CoverImagePath だけが意図したnullable文字列列として追加されていること。
+Booksテーブルに LastReadAt 列が存在すること。
 
-不要な列追加や列削除が発生していないこと。
+CoverImagePath がnullを許可していること。
 
-既存列の型や制約が意図せず変更されていないこと。
+LastReadAt がnullを許可していること。
 
-Down処理によって、今回追加した2列だけを元に戻せること。
+既存のBooksレコードが失われていないこと。
 
-ModelSnapshotが現在のBookモデルと整合していること。
+Migration適用前後で既存レコード数が変化していないこと。
 
-Migration生成後に dotnet build と dotnet test を実行してください。
+既存レコードの CoverImagePath が null であること。
+
+既存レコードの LastReadAt が null であること。
+
+Migration履歴に AddLastReadAtAndCoverImagePath が適用済みとして記録されていること。
+
+今回追加した2列以外について、意図しない列削除やデータ変更が発生していないこと。
+
+Migration適用後に dotnet build と dotnet test を実行してください。
 
 既存43件のテストがすべて成功することを確認してください。
 
-Migration生成のために外部パッケージの復元などが必要になった場合は、必要性を確認してから実行してください。
+可能であれば、アプリケーションコードを変更せずにEF CoreからBook一覧を読み取れることも確認してください。
 
-database update は絶対に実行しないでください。
-
-データベースファイルを直接編集しないでください。
+ただし、確認のためにデータの追加、更新、削除は行わないでください。
 
 今回の作業終了時に以下を報告してください。
 
-生成したMigration名。
+使用したSQLiteデータベースファイルの場所。
 
-作成または変更したファイル。
+作成したバックアップファイルの場所。
 
-MigrationのUp処理で行われる変更。
+適用前に適用済みだったMigration。
 
-MigrationのDown処理で行われる変更。
+適用前に未適用だったMigration。
 
-ModelSnapshotに反映された内容。
+実行したdatabase updateの結果。
 
-既存データへの影響。
+適用後のMigration状態。
+
+Booksテーブルへ追加された列。
+
+Migration適用前の既存Bookレコード数。
+
+Migration適用後の既存Bookレコード数。
+
+既存データが維持されたことを確認できたか。
 
 dotnet build の結果。
 
@@ -72,10 +86,10 @@ dotnet test の結果。
 
 既存43件のテストがすべて維持されたか。
 
-Migration内容に不審な変更や想定外の差分がないか。
+想定外の変更や問題がなかったか。
 
-database update を実行する前に確認すべき事項。
+次のAPI実装段階へ進む前に確認すべき事項。
 
 ここまで完了したら停止してください。
 
-database update、Controller変更、API追加、フロントエンド実装には進まないでください。
+Controller、API、Request、フロントエンドの実装には進まないでください。
