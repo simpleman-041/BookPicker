@@ -1,79 +1,121 @@
-今回は、既存のBookドメインルールを保護するためのテスト基盤を作成してください。
+今回は Book モデルのドメインロジック拡張だけを実装してください。
 
-最初に docs/bookpicker_codex_current_spec.md と現在のリポジトリを確認してください。
+最初に docs/bookpicker_codex_current_spec.md と現在の Book.cs、既存テストを確認してください。
 
-今回の目的は、今後 Book モデルへ LastReadAt や CoverImagePath などを追加する前に、現在正常に動作している重要なドメインルールを自動テストとして固定することです。
+今回の作業対象は Book モデルと、そのドメインロジックを検証するテストだけです。
 
-今回は新機能を実装しないでください。
+Controller、Request、Service、JavaScript、HTML、CSS、Migration、DbContext、データベース本体は変更しないでください。
 
-Book.cs、Controller、Service、Request、JavaScript、HTML、CSSなどの本番コードは変更しないでください。
+今回実装する内容は以下です。
 
-LastReadAt と CoverImagePath もまだ追加しないでください。
+Book に nullable な LastReadAt を追加してください。
 
-Migrationの生成や実行、データベースの変更も行わないでください。
+LastReadAt は、新しい CurrentPage が変更前の CurrentPage より大きい場合だけ現在のUTC日時へ更新してください。
 
-現在テストプロジェクトが存在しないため、BookPickerをテストできるテストプロジェクトを新しく作成してください。
+CurrentPage が同じ場合は LastReadAt を更新しないでください。
 
-既存のテストフレームワークが存在しない場合は、.NET環境に適した一般的なテストフレームワークを使用してください。
+CurrentPage が減少した場合も LastReadAt を更新しないでください。
 
-作成したテストプロジェクトは、既存のソリューションから通常の dotnet test で実行できる状態にしてください。
+このルールは、将来どのAPIから CurrentPage が変更されても一貫して適用できるよう、可能な限り Book のドメインロジック側で管理してください。
 
-今回テストする対象は、現在の Book クラスにすでに存在するドメインルールです。
+新規作成された Book の LastReadAt は null としてください。
 
-少なくとも以下を確認してください。
+Book に nullable な CoverImagePath を追加してください。
 
-タイトルが null、空文字、空白だけの場合に拒否されること。
+CoverImagePath が null、空文字、空白だけの場合は null として保持してください。
 
-タイトルが許可された最大文字数を超えた場合に拒否されること。
+第一完成版では CoverImagePath として、アプリ内相対パスまたは http、https の画像URLを扱う想定です。
 
-TotalPages の既存の下限と上限が守られること。
+Windowsのローカルファイルパスを直接扱う必要はありません。
 
-Genre に未定義の値を指定した場合に拒否されること。
+CoverImagePath の詳細なURL検証や画像ファイルの存在確認は今回実装しないでください。
 
-InterestLevel に未定義の値を指定した場合に拒否されること。
+Book の既存 private setter とカプセル化を維持してください。
 
-CurrentPage が負の値の場合に拒否されること。
+一般編集APIを将来実装するために、Book の編集可能項目を安全に更新できるドメインメソッドを追加してください。
 
-CurrentPage が TotalPages を超えた場合に拒否されること。
+対象は Title、Genre、TotalPages、CurrentPage、InterestLevel、CoverImagePath です。
 
-CurrentPage が 0 の場合、ReadingStatus が NotStarted になること。
+各値を途中状態で順番に反映して検証するのではなく、リクエストされた最終状態全体の整合性を先に検証し、すべて有効な場合だけ状態を変更してください。
 
-読書進捗が33パーセント付近の境界で、現在の Book 実装どおりの ReadingStatus になること。
+例えば、現在 TotalPages が500、CurrentPageが400のBookを、TotalPagesが300、CurrentPageが250へ同時に変更することは有効です。
 
-読書進捗が66パーセント付近の境界で、現在の Book 実装どおりの ReadingStatus になること。
+最終状態として CurrentPage が TotalPages 以下だからです。
 
-最終ページに到達しただけでは IsCompleted が自動的に true にならず、ReadingStatus も自動的に Completed にならないこと。
+逆に、最終状態で CurrentPage が TotalPages を超える場合は拒否してください。
 
-現在のドメインルールに従って読了状態にした場合、ReadingStatus が Completed になること。
+既存の Title、Genre、TotalPages、CurrentPage、InterestLevel の入力検証ルールは変更せず再利用してください。
 
-読了済みの本で CurrentPage を TotalPages 未満へ戻した場合、IsCompleted が自動的に false になり、ReadingStatus も現在ページに応じた状態へ戻ること。
+編集の結果 CurrentPage が TotalPages 未満になった場合は IsCompleted を false にしてください。
 
-重要事項として、33パーセントと66パーセントの境界については、仕様を推測して新しい期待値を作らず、現在の Book.cs の計算方法を確認した上で、その既存挙動をテストしてください。
+編集の結果 CurrentPage が TotalPages と等しくなった場合でも IsCompleted を自動的に true にはしないでください。
 
-現在の本番コードに問題を発見してテストが失敗した場合でも、今回は本番コードを修正してテストを通さないでください。
+ReadingStatus は編集後の最終状態から既存ルールに従って再計算してください。
 
-その場合は、どのテストが失敗したか、現在の実装がどう動いているか、仕様書と矛盾しているかを報告してください。
+一般編集によって CurrentPage が増加した場合にも LastReadAt を更新してください。
 
-テストのためだけに Book の private setter を public にしたり、既存のカプセル化を崩したりしないでください。
+CurrentPage が減少または同じ場合は更新しないでください。
 
-実装後は dotnet build と dotnet test を実行してください。
+既存の SetIsCompleted の挙動変更は今回は行わないでください。読了API対応時に別タスクとして扱います。
 
-作業終了時に以下を報告してください。
+今回追加した仕様について自動テストを追加してください。
 
-作成または変更したファイル。
+少なくとも以下をテストしてください。
 
-採用したテストフレームワーク。
+新規Bookの LastReadAt が null であること。
 
-追加したテストの一覧。
+CurrentPage を増加させると LastReadAt が設定されること。
+
+LastReadAt がUTCの現在時刻として妥当な範囲に入っていること。
+
+CurrentPage を同じ値に更新しても LastReadAt が変わらないこと。
+
+CurrentPage を減少させても LastReadAt が変わらないこと。
+
+一般編集で CurrentPage が増加した場合にも LastReadAt が更新されること。
+
+一般編集で CurrentPage が減少または同じ場合は LastReadAt が更新されないこと。
+
+CoverImagePath が null、空文字、空白の場合に null として保持されること。
+
+CoverImagePath に通常の値を指定した場合に保持されること。
+
+TotalPages と CurrentPage を同時に有効な最終状態へ変更できること。
+
+最終状態で CurrentPage が TotalPages を超える編集が拒否され、Bookの既存状態が途中まで変更されないこと。
+
+編集後に CurrentPage が TotalPages 未満になった場合、IsCompleted が false になること。
+
+編集によって最終ページへ到達しても IsCompleted が自動的に true にならないこと。
+
+編集後に ReadingStatus が正しく再計算されること。
+
+既存の24件のテストもすべて再実行してください。
+
+実装後に dotnet build と dotnet test を実行してください。
+
+既存テストが失敗した場合は、そのテストを削除したり期待値を変更して通さないでください。
+
+原因を調査し、本番コードの変更による回帰であれば報告してください。
+
+今回の作業終了時に以下を報告してください。
+
+変更したファイル。
+
+Book に追加したプロパティとドメインメソッド。
+
+追加したテスト。
 
 dotnet build の結果。
 
 dotnet test の結果。
 
-テストによって発見した既存コード上の問題。
+既存24テストがすべて維持されたか。
 
-次の実装段階へ進む前に確認すべき事項。
+実装中に見つかった仕様上または設計上の問題。
+
+次のMigration段階へ進む前に確認すべき事項。
 
 ここまで完了したら停止してください。
 
-LastReadAt、CoverImagePath、一般編集API、読了API、Migration、フロントエンドの実装にはまだ進まないでください。
+Migrationの生成や適用、ControllerやAPIの変更、フロントエンド実装には進まないでください。
