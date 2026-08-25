@@ -8,7 +8,8 @@
         Title = 0,
         TotalPages = 1,
         InterestLevel = 2,
-        ReadingStatus = 3
+        ReadingStatus = 3,
+        LastReadAt = 4
     }
     /// <summary>
     /// 本の並び替えにおいて昇順か降順かを表す列挙型。

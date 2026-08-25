@@ -52,7 +52,8 @@ namespace BookPicker.Controllers
                     createBookRequest.Title,
                     createBookRequest.Genre,
                     createBookRequest.TotalPages,
-                    createBookRequest.InterestLevel
+                    createBookRequest.InterestLevel,
+                    createBookRequest.CoverImagePath
                     );
                 _dbContext.Books.Add(book);
                 await _dbContext.SaveChangesAsync();
@@ -64,6 +65,52 @@ namespace BookPicker.Controllers
             }
             
             
+        }
+
+        [HttpPut("{id}")]
+        public async Task<IActionResult> UpdateBook(int id, UpdateBookRequest updateBookRequest)
+        {
+            var book = await _dbContext.Books.FindAsync(id);
+            if (book == null)
+            {
+                return NotFound();
+            }
+
+            try
+            {
+                book.UpdateDetails(
+                    updateBookRequest.Title,
+                    updateBookRequest.Genre,
+                    updateBookRequest.TotalPages,
+                    updateBookRequest.CurrentPage,
+                    updateBookRequest.InterestLevel,
+                    updateBookRequest.CoverImagePath);
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(ex.Message);
+            }
+
+            await _dbContext.SaveChangesAsync();
+            return NoContent();
+        }
+
+        [HttpPut("{id}/completion")]
+        public async Task<IActionResult> UpdateCompletion(int id, UpdateCompletionRequest updateCompletionRequest)
+        {
+            var book = await _dbContext.Books.FindAsync(id);
+            if (book == null)
+            {
+                return NotFound();
+            }
+
+            if (!book.TrySetIsCompleted(updateCompletionRequest.IsCompleted))
+            {
+                return BadRequest("最終ページへ到達していない本を読了にすることはできません。");
+            }
+
+            await _dbContext.SaveChangesAsync();
+            return NoContent();
         }
 
         [HttpPut("{id}/progress")]
@@ -101,30 +148,43 @@ namespace BookPicker.Controllers
             // 並び替え条件が無効な場合は DBアクセスを行わずに BadRequest を返す
             if (sortRequest.IsValid == false) return BadRequest("Invalid sort request.");
 
-            var books = _dbContext.Books.ToListAsync();
+            try
+            {
+                var filterCriteria = new FilterCriteria(
+                    filterRequest.IsCompleted,
+                    filterRequest.Genre,
+                    filterRequest.MinPages,
+                    filterRequest.MaxPages,
+                    filterRequest.ReadingStatus,
+                    filterRequest.InterestLevel,
+                    filterRequest.SearchTitle,
+                    filterRequest.TitleMatchMode
+                );
 
-            var filterCriteria = new FilterCriteria(
-                filterRequest.IsCompleted,
-                filterRequest.Genre,
-                filterRequest.MinPages,
-                filterRequest.MaxPages,
-                filterRequest.ReadingStatus,
-                filterRequest.InterestLevel,
-                filterRequest.SearchTitle,
-                filterRequest.TitleMatchMode
-            );
+                SortCriteria? sortCriteria = null;
+                if (sortRequest.Field.HasValue && sortRequest.Order.HasValue)
+                {
+                    sortCriteria = new SortCriteria(sortRequest.Field.Value, sortRequest.Order.Value);
+                }
 
-            var filterService = new FilterService();
-            var filteredBooks = filterService.FilterBooks(await books, filterCriteria);
+                var books = await _dbContext.Books.ToListAsync();
+                var filterService = new FilterService();
+                var filteredBooks = filterService.FilterBooks(books, filterCriteria);
 
-            
-            if (sortRequest.Field.HasValue == false && sortRequest.Order.HasValue == false) return Ok(filteredBooks);
+                if (sortCriteria == null)
+                {
+                    return Ok(filteredBooks.OrderByDescending(book => book.Id));
+                }
 
-            var sortCriteria = new SortCriteria(sortRequest.Field.Value, sortRequest.Order.Value);
-            var sortService = new SortService();
-            var sortedBooks = sortService.SortBooks(filteredBooks, sortCriteria);
+                var sortService = new SortService();
+                var sortedBooks = sortService.SortBooks(filteredBooks, sortCriteria);
 
-            return Ok(sortedBooks);
+                return Ok(sortedBooks);
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(ex.Message);
+            }
         }
     }
 }

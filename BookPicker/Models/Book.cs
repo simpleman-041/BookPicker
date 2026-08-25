@@ -211,11 +211,22 @@
         /// <param name="isFinishReading"></param>
         public void SetIsCompleted(bool isFinishReading)
         {
-            if (CurrentPage == TotalPages)
+            TrySetIsCompleted(isFinishReading);
+        }
+
+        /// <summary>
+        /// 読了状態を変更し、最終ページ未到達で読了にしようとした場合はfalseを返す。
+        /// </summary>
+        public bool TrySetIsCompleted(bool isFinishReading)
+        {
+            if (isFinishReading && CurrentPage != TotalPages)
             {
-                IsCompleted = isFinishReading;
-                UpdateReadingStatus();
+                return false;
             }
+
+            IsCompleted = isFinishReading;
+            UpdateReadingStatus();
+            return true;
         }
     }
 }

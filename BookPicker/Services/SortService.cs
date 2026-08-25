@@ -49,6 +49,17 @@ namespace BookPicker.Services
                     _ => throw new InvalidOperationException("並び替え順序に不正な値が指定されました。")    
                 };
             }
+            else if (criteria.Field == SortField.LastReadAt)
+            {
+                sortedBooks = criteria.Order switch
+                {
+                    SortOrder.Ascending => sortedBooks.OrderBy(b => b.LastReadAt),
+                    SortOrder.Descending => sortedBooks
+                        .OrderByDescending(b => b.LastReadAt.HasValue)
+                        .ThenByDescending(b => b.LastReadAt),
+                    _ => throw new InvalidOperationException("並び替え順序に不正な値が指定されました。")
+                };
+            }
             else
             {
                 throw new InvalidOperationException("並び替え基準に不正な値が指定されました。");
