@@ -2,8 +2,14 @@
     const response = await fetch('/api/books');
     const books = await response.json();
 
+    const bookList = document.getElementById("book-list");
+
     for (const book of books) {
-        console.log(book.title);
+        const bookItem = document.createElement("li");
+
+        bookItem.textContent = book.title;
+
+        bookList.appendChild(bookItem);
     }
 }
 
