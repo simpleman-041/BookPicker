@@ -514,6 +514,9 @@ select:focus-visible {
 .detail-panel__edit:disabled,
 .detail-panel__cancel:disabled,
 .detail-panel__close:disabled,
+.detail-book__progress-input:disabled,
+.detail-book__progress-update:disabled,
+.detail-book__completion-button:disabled,
 .detail-panel__delete:disabled {
     cursor: not-allowed;
     opacity: 0.65;
@@ -603,6 +606,7 @@ select:focus-visible {
 
 .detail-book__progress-heading {
     display: flex;
+    flex-wrap: wrap;
     align-items: baseline;
     justify-content: space-between;
     gap: 1rem;
@@ -616,8 +620,86 @@ select:focus-visible {
 }
 
 .detail-book__progress-text {
-    font-size: 1.15rem;
+    color: var(--color-ink);
+    font-size: 1.3rem;
+    font-weight: 800;
+    letter-spacing: 0.015em;
+}
+
+.detail-book__progress--view {
+    padding: 0.85rem;
+    background: #f8f9f7;
+    border: 1px solid var(--color-border);
+    border-radius: 0.65rem;
+}
+
+.detail-book__progress-form {
+    min-width: 0;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.4rem;
+}
+
+.detail-book__progress-input {
+    width: 5.25rem;
+    padding: 0.4rem 0.45rem;
+    color: var(--color-ink);
+    font-size: 1.2rem;
+    font-weight: 800;
+    text-align: right;
+    background: var(--color-surface);
+    border: 1px solid #9da79f;
+    border-radius: 0.45rem;
+}
+
+.detail-book__progress-total {
+    min-width: 2.5rem;
+    color: var(--color-ink);
+    font-size: 1.3rem;
+    font-weight: 800;
+    letter-spacing: 0.015em;
+}
+
+.detail-book__progress-update {
+    padding: 0.42rem 0.65rem;
+    color: var(--color-accent-dark);
+    font-size: 0.85rem;
     font-weight: 700;
+    background: var(--color-accent-soft);
+    border: 1px solid #9bb4a5;
+    border-radius: 0.45rem;
+}
+
+.detail-book__progress-update:hover {
+    background: #cfdfd4;
+}
+
+.detail-book__progress-error,
+.detail-book__progress-status {
+    padding: 0.65rem 0.7rem;
+    margin: 0;
+    font-size: 0.85rem;
+    line-height: 1.5;
+    border-radius: 0.45rem;
+}
+
+.detail-book__progress-error {
+    color: #7c2929;
+    background: var(--color-danger-soft);
+    border: 1px solid #d9aaa5;
+}
+
+.detail-book__progress-status {
+    color: var(--color-accent-dark);
+    background: var(--color-accent-soft);
+    border: 1px solid #b9cbbf;
+}
+
+.detail-book__progress-error[hidden],
+.detail-book__progress-status[hidden] {
+    display: none;
 }
 
 .detail-book__progress-inputs {
@@ -703,6 +785,83 @@ select:focus-visible {
 
 .detail-book__metadata-item--editable dd {
     font-weight: 400;
+}
+
+.detail-book__field-help {
+    margin: 0.4rem 0 0;
+    color: var(--color-muted);
+    font-size: 0.75rem;
+    line-height: 1.5;
+}
+
+.detail-book__metadata-item--completion {
+    padding: 0.8rem;
+    background: #f5f7f4;
+    border: 1px solid var(--color-border);
+    border-radius: 0.6rem;
+}
+
+.detail-book__completion-control {
+    display: grid;
+    gap: 0.65rem;
+}
+
+.detail-book__completion-summary {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.65rem;
+}
+
+.detail-book__completion-button {
+    padding: 0.5rem 0.8rem;
+    color: #ffffff;
+    font-weight: 700;
+    background: var(--color-accent);
+    border: 1px solid var(--color-accent);
+    border-radius: 0.5rem;
+}
+
+.detail-book__completion-button:hover {
+    background: var(--color-accent-dark);
+}
+
+.detail-book__completion-button--undo {
+    color: var(--color-accent-dark);
+    background: var(--color-surface);
+    border-color: #9bb4a5;
+}
+
+.detail-book__completion-button--undo:hover {
+    background: var(--color-accent-soft);
+}
+
+.detail-book__completion-error,
+.detail-book__completion-status {
+    padding: 0.65rem 0.7rem;
+    margin: 0;
+    font-size: 0.85rem;
+    font-weight: 400;
+    line-height: 1.5;
+    border-radius: 0.45rem;
+}
+
+.detail-book__completion-error {
+    color: #7c2929;
+    background: var(--color-danger-soft);
+    border: 1px solid #d9aaa5;
+}
+
+.detail-book__completion-status {
+    color: var(--color-accent-dark);
+    background: var(--color-accent-soft);
+    border: 1px solid #b9cbbf;
+}
+
+.detail-book__completion-error[hidden],
+.detail-book__completion-status[hidden] {
+    display: none;
 }
 
 .detail-book__edit-error,

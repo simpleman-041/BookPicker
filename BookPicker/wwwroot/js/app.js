@@ -102,9 +102,20 @@ let currentBookDetail = null;
 let editingBookId = null;
 let editBookSnapshot = null;
 let isSavingBook = false;
+let isUpdatingCompletion = false;
+let completionUpdateTarget = null;
+let isUpdatingProgress = false;
 
 function getBookApiUrl(bookId) {
     return `${BOOKS_API_URL}/${encodeURIComponent(bookId)}`;
+}
+
+function getBookCompletionApiUrl(bookId) {
+    return `${getBookApiUrl(bookId)}/completion`;
+}
+
+function getBookProgressApiUrl(bookId) {
+    return `${getBookApiUrl(bookId)}/progress`;
 }
 
 async function fetchBooks() {
@@ -229,33 +240,65 @@ function createMetadataItem(label, value, valueClassName = "") {
     return item;
 }
 
-function createBookDetail(book) {
-    const article = document.createElement("article");
-    const title = createTextElement("h3", "detail-book__title", book.title || "タイトル未設定");
-    const progressSection = document.createElement("section");
-    const progressHeading = document.createElement("div");
+function isDetailUpdateInProgress() {
+    return isSavingBook || isUpdatingCompletion || isUpdatingProgress;
+}
+
+function createBookProgressSection(book) {
+    const section = document.createElement("section");
+    const heading = document.createElement("div");
     const progressLabel = createTextElement("span", "detail-book__progress-label", "進捗");
-    const progressText = createTextElement(
+    const form = document.createElement("form");
+    const currentPageLabel = createTextElement("label", "visually-hidden", "現在ページ");
+    const currentPageInput = document.createElement("input");
+    const separator = createTextElement("span", "detail-book__progress-separator", "/");
+    const totalPages = createTextElement(
         "span",
-        "detail-book__progress-text",
-        `${book.currentPage} / ${book.totalPages}`
+        "detail-book__progress-total",
+        String(book.totalPages)
     );
+    const updateButton = createTextElement("button", "detail-book__progress-update", "更新");
     const progressBar = document.createElement("span");
     const progressValue = document.createElement("span");
+    const errorMessage = createTextElement("p", "detail-book__progress-error", "");
+    const updatingStatus = createTextElement(
+        "p",
+        "detail-book__progress-status",
+        "現在ページを更新しています…"
+    );
     const progressPercentage = calculateProgressPercentage(book.currentPage, book.totalPages);
-    const main = document.createElement("div");
-    const cover = document.createElement("figure");
-    const coverImage = document.createElement("img");
-    const metadata = document.createElement("dl");
-    const footer = document.createElement("footer");
-    const deleteButton = createTextElement("button", "detail-panel__delete", "削除");
 
-    article.className = "detail-book";
+    section.className = "detail-book__progress detail-book__progress--view";
+    section.setAttribute("aria-label", "読書の進捗");
+    heading.className = "detail-book__progress-heading";
 
-    progressSection.className = "detail-book__progress";
-    progressSection.setAttribute("aria-label", "読書の進捗");
-    progressHeading.className = "detail-book__progress-heading";
-    progressHeading.append(progressLabel, progressText);
+    form.id = "book-progress-form";
+    form.className = "detail-book__progress-form";
+    form.noValidate = true;
+    form.addEventListener("submit", (event) => {
+        requestBookProgressUpdate(event, book);
+    });
+
+    currentPageInput.id = "book-progress-current-page";
+    currentPageInput.name = "currentPage";
+    currentPageInput.className = "detail-book__progress-input";
+    currentPageInput.type = "number";
+    currentPageInput.min = "0";
+    currentPageInput.max = String(book.totalPages);
+    currentPageInput.step = "1";
+    currentPageInput.required = true;
+    currentPageInput.value = String(book.currentPage);
+    currentPageInput.disabled = isDetailUpdateInProgress();
+    currentPageLabel.htmlFor = currentPageInput.id;
+
+    totalPages.setAttribute("aria-label", `総ページ数 ${book.totalPages}`);
+    updateButton.id = "book-progress-update";
+    updateButton.type = "submit";
+    updateButton.disabled = isDetailUpdateInProgress();
+
+    form.append(currentPageLabel, currentPageInput, separator, totalPages, updateButton);
+    heading.append(progressLabel, form);
+
     progressBar.className = "detail-book__progress-bar";
     progressBar.setAttribute("role", "progressbar");
     progressBar.setAttribute("aria-valuemin", "0");
@@ -265,7 +308,84 @@ function createBookDetail(book) {
     progressValue.className = "detail-book__progress-value";
     progressValue.style.width = `${progressPercentage}%`;
     progressBar.appendChild(progressValue);
-    progressSection.append(progressHeading, progressBar);
+
+    errorMessage.id = "book-progress-error";
+    errorMessage.setAttribute("role", "alert");
+    errorMessage.hidden = true;
+    updatingStatus.id = "book-progress-status";
+    updatingStatus.setAttribute("role", "status");
+    updatingStatus.hidden = !isUpdatingProgress;
+
+    section.append(heading, progressBar, errorMessage, updatingStatus);
+    return section;
+}
+
+function createCompletionMetadataItem(book) {
+    const item = document.createElement("div");
+    const term = createTextElement("dt", "", "読了状態");
+    const description = document.createElement("dd");
+    const summary = document.createElement("div");
+    const state = createTextElement(
+        "span",
+        "detail-book__completion",
+        book.isCompleted ? "読了済み" : "未読了"
+    );
+    const actionButton = createTextElement(
+        "button",
+        book.isCompleted
+            ? "detail-book__completion-button detail-book__completion-button--undo"
+            : "detail-book__completion-button",
+        book.isCompleted ? "読了解除" : "読了にする"
+    );
+    const errorMessage = createTextElement("p", "detail-book__completion-error", "");
+    const updatingStatus = createTextElement("p", "detail-book__completion-status", "");
+
+    item.className = "detail-book__metadata-item detail-book__metadata-item--completion";
+    description.className = "detail-book__completion-control";
+    summary.className = "detail-book__completion-summary";
+
+    actionButton.id = "book-completion-action";
+    actionButton.type = "button";
+    actionButton.disabled = isDetailUpdateInProgress();
+    actionButton.addEventListener("click", () => {
+        requestBookCompletionChange(book);
+    });
+
+    if (isUpdatingCompletion) {
+        actionButton.textContent = completionUpdateTarget
+            ? "読了にしています…"
+            : "読了解除しています…";
+    }
+
+    errorMessage.id = "book-completion-error";
+    errorMessage.setAttribute("role", "alert");
+    errorMessage.hidden = true;
+
+    updatingStatus.id = "book-completion-status";
+    updatingStatus.setAttribute("role", "status");
+    updatingStatus.textContent = completionUpdateTarget
+        ? "読了状態を更新しています…"
+        : "読了状態を解除しています…";
+    updatingStatus.hidden = !isUpdatingCompletion;
+
+    summary.append(state, actionButton);
+    description.append(summary, errorMessage, updatingStatus);
+    item.append(term, description);
+    return item;
+}
+
+function createBookDetail(book) {
+    const article = document.createElement("article");
+    const title = createTextElement("h3", "detail-book__title", book.title || "タイトル未設定");
+    const progressSection = createBookProgressSection(book);
+    const main = document.createElement("div");
+    const cover = document.createElement("figure");
+    const coverImage = document.createElement("img");
+    const metadata = document.createElement("dl");
+    const footer = document.createElement("footer");
+    const deleteButton = createTextElement("button", "detail-panel__delete", "削除");
+
+    article.className = "detail-book";
 
     main.className = "detail-book__main";
     cover.className = "detail-book__cover";
@@ -283,11 +403,7 @@ function createBookDetail(book) {
             "興味レベル",
             getEnumLabel(book.interestLevel, INTEREST_LEVEL_LABELS, INTEREST_LEVEL_NAME_LABELS)
         ),
-        createMetadataItem(
-            "読了状態",
-            book.isCompleted ? "読了済み" : "未読了",
-            "detail-book__completion"
-        ),
+        createCompletionMetadataItem(book),
         createMetadataItem(
             "最後に読んだ日",
             formatLastReadAt(book.lastReadAt),
@@ -327,7 +443,7 @@ function createEnumSelect(id, name, numericLabels, nameLabels, currentValue) {
     return select;
 }
 
-function createMetadataControlItem(label, control) {
+function createMetadataControlItem(label, control, helpText = "") {
     const item = document.createElement("div");
     const term = document.createElement("dt");
     const fieldLabel = createTextElement("label", "", label);
@@ -337,8 +453,41 @@ function createMetadataControlItem(label, control) {
     fieldLabel.htmlFor = control.id;
     term.appendChild(fieldLabel);
     description.appendChild(control);
+
+    if (helpText !== "") {
+        const help = createTextElement("p", "detail-book__field-help", helpText);
+
+        help.id = `${control.id}-help`;
+        control.setAttribute("aria-describedby", help.id);
+        description.appendChild(help);
+    }
+
     item.append(term, description);
     return item;
+}
+
+function createCompletionSelect(isCompleted) {
+    const select = document.createElement("select");
+    const options = [
+        { value: "false", label: "未読了" },
+        { value: "true", label: "読了済み" }
+    ];
+
+    select.id = "book-edit-completion";
+    select.name = "isCompleted";
+    select.className = "detail-book__select";
+    select.required = true;
+
+    for (const optionDefinition of options) {
+        const option = document.createElement("option");
+
+        option.value = optionDefinition.value;
+        option.textContent = optionDefinition.label;
+        option.selected = optionDefinition.value === String(Boolean(isCompleted));
+        select.appendChild(option);
+    }
+
+    return select;
 }
 
 function createBookEditForm(book) {
@@ -375,6 +524,7 @@ function createBookEditForm(book) {
         INTEREST_LEVEL_NAME_LABELS,
         book.interestLevel
     );
+    const completionSelect = createCompletionSelect(book.isCompleted);
     const errorMessage = createTextElement("p", "detail-book__edit-error", "");
     const savingStatus = createTextElement("p", "detail-book__saving-status", "保存しています…");
 
@@ -479,10 +629,10 @@ function createBookEditForm(book) {
     metadata.append(
         createMetadataControlItem("ジャンル", genreSelect),
         createMetadataControlItem("興味レベル", interestLevelSelect),
-        createMetadataItem(
+        createMetadataControlItem(
             "読了状態",
-            book.isCompleted ? "読了済み" : "未読了",
-            "detail-book__completion"
+            completionSelect,
+            "「読了済み」を選ぶと、保存時に現在ページが総ページ数へ進みます。"
         ),
         createMetadataItem(
             "最後に読んだ日",
@@ -515,17 +665,17 @@ function setDetailActionsUnavailable() {
     bookDetailEditButton.disabled = true;
     bookDetailCancelButton.hidden = true;
     bookDetailCancelButton.disabled = false;
-    bookDetailCloseButton.disabled = false;
+    bookDetailCloseButton.disabled = isDetailUpdateInProgress();
 }
 
 function setDetailActionsForView() {
     bookDetailPanel.classList.remove("detail-panel--editing");
     bookDetailEditButton.textContent = "編集";
     bookDetailEditButton.classList.remove("detail-panel__edit--save");
-    bookDetailEditButton.disabled = currentBookDetail === null;
+    bookDetailEditButton.disabled = currentBookDetail === null || isDetailUpdateInProgress();
     bookDetailCancelButton.hidden = true;
     bookDetailCancelButton.disabled = false;
-    bookDetailCloseButton.disabled = false;
+    bookDetailCloseButton.disabled = isDetailUpdateInProgress();
 }
 
 function setDetailActionsForEdit() {
@@ -568,7 +718,7 @@ function renderBookDetail(book) {
 }
 
 function startBookEditing() {
-    if (currentBookDetail === null || isSavingBook) {
+    if (currentBookDetail === null || isDetailUpdateInProgress()) {
         return;
     }
 
@@ -591,6 +741,29 @@ function cancelBookEditing() {
     bookDetailEditButton.focus();
 }
 
+function hasGeneralBookEdits(form, book) {
+    const genre = getEnumNumericValue(
+        book.genre,
+        GENRE_LABELS,
+        GENRE_NAME_LABELS
+    );
+    const interestLevel = getEnumNumericValue(
+        book.interestLevel,
+        INTEREST_LEVEL_LABELS,
+        INTEREST_LEVEL_NAME_LABELS
+    );
+
+    return form.elements.title.value !== String(book.title ?? "")
+        || form.elements.currentPage.value !== String(book.currentPage)
+        || form.elements.totalPages.value !== String(book.totalPages)
+        || form.elements.genre.value !== String(genre)
+        || form.elements.interestLevel.value !== String(interestLevel);
+}
+
+function getSelectedCompletionState(form) {
+    return form.elements.isCompleted.value === "true";
+}
+
 function hasUnsavedBookEdits() {
     const form = document.getElementById("book-edit-form");
 
@@ -598,22 +771,8 @@ function hasUnsavedBookEdits() {
         return false;
     }
 
-    const genre = getEnumNumericValue(
-        editBookSnapshot.genre,
-        GENRE_LABELS,
-        GENRE_NAME_LABELS
-    );
-    const interestLevel = getEnumNumericValue(
-        editBookSnapshot.interestLevel,
-        INTEREST_LEVEL_LABELS,
-        INTEREST_LEVEL_NAME_LABELS
-    );
-
-    return form.elements.title.value !== String(editBookSnapshot.title ?? "")
-        || form.elements.currentPage.value !== String(editBookSnapshot.currentPage)
-        || form.elements.totalPages.value !== String(editBookSnapshot.totalPages)
-        || form.elements.genre.value !== String(genre)
-        || form.elements.interestLevel.value !== String(interestLevel);
+    return hasGeneralBookEdits(form, editBookSnapshot)
+        || getSelectedCompletionState(form) !== Boolean(editBookSnapshot.isCompleted);
 }
 
 function setSelectedBook(bookId) {
@@ -655,7 +814,7 @@ function closeBookDetailPanel(restoreCardFocus = false) {
 }
 
 function requestCloseBookDetailPanel(restoreCardFocus = false) {
-    if (isSavingBook) {
+    if (isDetailUpdateInProgress()) {
         return;
     }
 
@@ -670,7 +829,8 @@ function requestCloseBookDetailPanel(restoreCardFocus = false) {
 function requestBookSelection(bookId) {
     const normalizedBookId = String(bookId);
 
-    if (isSavingBook || (editingBookId !== null && normalizedBookId === editingBookId)) {
+    if (isDetailUpdateInProgress()
+        || (editingBookId !== null && normalizedBookId === editingBookId)) {
         return;
     }
 
@@ -785,6 +945,346 @@ async function readApiErrorMessage(response) {
     return responseText;
 }
 
+function setCompletionActionError(message) {
+    const errorMessage = document.getElementById("book-completion-error");
+
+    if (errorMessage === null) {
+        return;
+    }
+
+    errorMessage.textContent = message;
+    errorMessage.hidden = message === "";
+}
+
+function setProgressActionError(message) {
+    const errorMessage = document.getElementById("book-progress-error");
+
+    if (errorMessage === null) {
+        return;
+    }
+
+    errorMessage.textContent = message;
+    errorMessage.hidden = message === "";
+}
+
+function setDetailViewControlsDisabled(isDisabled) {
+    const progressInput = document.getElementById("book-progress-current-page");
+    const progressButton = document.getElementById("book-progress-update");
+    const completionButton = document.getElementById("book-completion-action");
+
+    if (progressInput !== null) {
+        progressInput.disabled = isDisabled;
+    }
+
+    if (progressButton !== null) {
+        progressButton.disabled = isDisabled;
+    }
+
+    if (completionButton !== null) {
+        completionButton.disabled = isDisabled;
+    }
+}
+
+function setCompletionUpdatingState(isUpdating, targetState = null) {
+    const actionButton = document.getElementById("book-completion-action");
+    const updatingStatus = document.getElementById("book-completion-status");
+
+    isUpdatingCompletion = isUpdating;
+    completionUpdateTarget = isUpdating ? targetState : null;
+    bookDetailPanel.setAttribute("aria-busy", String(isUpdating));
+    bookDetailEditButton.disabled = isUpdating || currentBookDetail === null;
+    bookDetailCloseButton.disabled = isUpdating;
+    setDetailViewControlsDisabled(isUpdating);
+
+    if (actionButton !== null) {
+        actionButton.disabled = isUpdating;
+        actionButton.textContent = isUpdating
+            ? (targetState ? "読了にしています…" : "読了解除しています…")
+            : (currentBookDetail?.isCompleted ? "読了解除" : "読了にする");
+    }
+
+    if (updatingStatus !== null) {
+        updatingStatus.textContent = targetState
+            ? "読了状態を更新しています…"
+            : "読了状態を解除しています…";
+        updatingStatus.hidden = !isUpdating;
+    }
+}
+
+function setProgressUpdatingState(isUpdating) {
+    const updateButton = document.getElementById("book-progress-update");
+    const updatingStatus = document.getElementById("book-progress-status");
+
+    isUpdatingProgress = isUpdating;
+    bookDetailPanel.setAttribute("aria-busy", String(isUpdating));
+    bookDetailEditButton.disabled = isUpdating || currentBookDetail === null;
+    bookDetailCloseButton.disabled = isUpdating;
+    setDetailViewControlsDisabled(isUpdating);
+
+    if (updateButton !== null) {
+        updateButton.textContent = isUpdating ? "更新中…" : "更新";
+    }
+
+    if (updatingStatus !== null) {
+        updatingStatus.hidden = !isUpdating;
+    }
+}
+
+function getProgressInputError(currentPage, totalPages) {
+    if (!Number.isInteger(currentPage) || currentPage < 0) {
+        return "現在ページは0以上の整数で入力してください。";
+    }
+
+    if (currentPage > totalPages) {
+        return `現在ページは総ページ数（${totalPages}）以下で入力してください。`;
+    }
+
+    return "";
+}
+
+async function updateBookProgress(bookId, currentPage) {
+    const progressApiUrl = getBookProgressApiUrl(bookId);
+    const response = await fetch(progressApiUrl, {
+        method: "PUT",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ currentPage })
+    });
+
+    if (!response.ok) {
+        const error = new Error(`PUT ${progressApiUrl} failed: ${response.status}`);
+
+        error.status = response.status;
+        error.apiMessage = await readApiErrorMessage(response);
+        throw error;
+    }
+}
+
+function getProgressFailureMessage(error) {
+    if (error.status === 400) {
+        return error.apiMessage
+            ? `現在ページを更新できませんでした。${error.apiMessage}`
+            : "現在ページを更新できませんでした。入力値を確認してください。";
+    }
+
+    if (error.status === 404) {
+        return "この本は見つかりませんでした。すでに削除された可能性があります。";
+    }
+
+    return "現在ページを更新できませんでした。時間をおいて再度お試しください。";
+}
+
+function getProgressRefreshFailureMessage(detailError, listError) {
+    if (detailError !== null && listError !== null) {
+        return "現在ページは更新されましたが、詳細と一覧の最新情報を再取得できませんでした。ページを再読み込みしてください。";
+    }
+
+    if (detailError !== null) {
+        return detailError.status === 404
+            ? "現在ページは更新されましたが、この本の最新情報を取得できませんでした。一覧を更新して再度お試しください。"
+            : "現在ページは更新されましたが、詳細の最新情報を再取得できませんでした。本を選び直してください。";
+    }
+
+    return "現在ページは更新され、詳細を更新しましたが、一覧の最新情報を再取得できませんでした。ページを再読み込みしてください。";
+}
+
+async function requestBookProgressUpdate(event, book) {
+    event.preventDefault();
+
+    if (isDetailUpdateInProgress() || editingBookId !== null) {
+        return;
+    }
+
+    const form = event.currentTarget;
+    const currentPage = form.elements.currentPage.valueAsNumber;
+    const inputError = getProgressInputError(currentPage, Number(book.totalPages));
+
+    setProgressActionError(inputError);
+
+    if (inputError !== "") {
+        form.elements.currentPage.focus();
+        return;
+    }
+
+    const bookId = String(book.id);
+    let progressUpdated = false;
+    let refreshCompleted = false;
+
+    setProgressUpdatingState(true);
+
+    try {
+        await updateBookProgress(bookId, currentPage);
+        progressUpdated = true;
+
+        const { detailError, listError } = await refreshBookViews(bookId);
+
+        if (detailError !== null || listError !== null) {
+            console.error("現在ページ更新後に最新情報を再取得できませんでした。", {
+                detailError,
+                listError
+            });
+            setProgressActionError(getProgressRefreshFailureMessage(detailError, listError));
+            return;
+        }
+
+        refreshCompleted = true;
+    } catch (error) {
+        if (progressUpdated) {
+            console.error("現在ページ更新後に最新情報を反映できませんでした。", error);
+            setProgressActionError(
+                "現在ページは更新されましたが、最新情報を画面へ反映できませんでした。ページを再読み込みしてください。"
+            );
+        } else {
+            console.error("現在ページを更新できませんでした。", error);
+            setProgressActionError(getProgressFailureMessage(error));
+        }
+    } finally {
+        setProgressUpdatingState(false);
+    }
+
+    if (refreshCompleted) {
+        document.getElementById("book-progress-current-page")?.focus();
+    }
+}
+
+function confirmBookCompletion(book) {
+    const currentPage = Number(book.currentPage);
+    const totalPages = Number(book.totalPages);
+
+    if (currentPage >= totalPages) {
+        return true;
+    }
+
+    return window.confirm(
+        `現在の進捗は${book.currentPage} / ${book.totalPages}です。\n`
+        + `読了にすると現在ページが${book.totalPages}へ変更されます。\n`
+        + "読了にしますか？"
+    );
+}
+
+async function updateBookCompletion(bookId, isCompleted) {
+    const completionApiUrl = getBookCompletionApiUrl(bookId);
+    const response = await fetch(completionApiUrl, {
+        method: "PUT",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ isCompleted })
+    });
+
+    if (!response.ok) {
+        const error = new Error(`PUT ${completionApiUrl} failed: ${response.status}`);
+
+        error.status = response.status;
+        error.apiMessage = await readApiErrorMessage(response);
+        throw error;
+    }
+}
+
+async function refreshBookViews(bookId) {
+    const [detailResult, listResult] = await Promise.allSettled([
+        fetchBookDetail(bookId),
+        fetchBooks()
+    ]);
+
+    if (listResult.status === "fulfilled") {
+        renderBooks(listResult.value);
+        updateResultCount(listResult.value.length);
+        setSelectedBook(bookId);
+    }
+
+    if (detailResult.status === "fulfilled") {
+        renderBookDetail(detailResult.value);
+    }
+
+    return {
+        detailError: detailResult.status === "rejected" ? detailResult.reason : null,
+        listError: listResult.status === "rejected" ? listResult.reason : null
+    };
+}
+
+function getCompletionFailureMessage(error, targetState) {
+    if (error.status === 404) {
+        return "この本は見つかりませんでした。すでに削除された可能性があります。";
+    }
+
+    const operation = targetState ? "読了に" : "読了解除";
+
+    if (error.status === 400 && error.apiMessage) {
+        return `${operation}できませんでした。${error.apiMessage}`;
+    }
+
+    return `${operation}できませんでした。時間をおいて再度お試しください。`;
+}
+
+function getCompletionRefreshFailureMessage(detailError, listError) {
+    if (detailError !== null && listError !== null) {
+        return "読了状態は変更されましたが、詳細と一覧の最新情報を再取得できませんでした。ページを再読み込みしてください。";
+    }
+
+    if (detailError !== null) {
+        return detailError.status === 404
+            ? "読了状態は変更されましたが、この本の最新情報を取得できませんでした。一覧を更新して再度お試しください。"
+            : "読了状態は変更されましたが、詳細の最新情報を再取得できませんでした。本を選び直してください。";
+    }
+
+    return "読了状態は変更され、詳細を更新しましたが、一覧の最新情報を再取得できませんでした。ページを再読み込みしてください。";
+}
+
+async function requestBookCompletionChange(book) {
+    if (isDetailUpdateInProgress() || editingBookId !== null) {
+        return;
+    }
+
+    const targetState = !book.isCompleted;
+
+    if (targetState && !confirmBookCompletion(book)) {
+        return;
+    }
+
+    const bookId = String(book.id);
+    let completionUpdated = false;
+    let refreshCompleted = false;
+
+    setCompletionActionError("");
+    setCompletionUpdatingState(true, targetState);
+
+    try {
+        await updateBookCompletion(bookId, targetState);
+        completionUpdated = true;
+
+        const { detailError, listError } = await refreshBookViews(bookId);
+
+        if (detailError !== null || listError !== null) {
+            console.error("読了状態の変更後に最新情報を再取得できませんでした。", {
+                detailError,
+                listError
+            });
+            setCompletionActionError(getCompletionRefreshFailureMessage(detailError, listError));
+            return;
+        }
+
+        refreshCompleted = true;
+    } catch (error) {
+        if (completionUpdated) {
+            console.error("読了状態の変更後に最新情報を反映できませんでした。", error);
+            setCompletionActionError(
+                "読了状態は変更されましたが、最新情報を画面へ反映できませんでした。ページを再読み込みしてください。"
+            );
+        } else {
+            console.error("読了状態を変更できませんでした。", error);
+            setCompletionActionError(getCompletionFailureMessage(error, targetState));
+        }
+    } finally {
+        setCompletionUpdatingState(false);
+    }
+
+    if (refreshCompleted) {
+        document.getElementById("book-completion-action")?.focus();
+    }
+}
+
 function setBookEditError(message) {
     const errorMessage = document.getElementById("book-edit-error");
 
@@ -822,6 +1322,25 @@ function createUpdateBookPayload(form) {
     };
 }
 
+async function updateBookDetails(bookId, updatePayload) {
+    const bookApiUrl = getBookApiUrl(bookId);
+    const response = await fetch(bookApiUrl, {
+        method: "PUT",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify(updatePayload)
+    });
+
+    if (!response.ok) {
+        const error = new Error(`PUT ${bookApiUrl} failed: ${response.status}`);
+
+        error.status = response.status;
+        error.apiMessage = await readApiErrorMessage(response);
+        throw error;
+    }
+}
+
 function getSaveFailureMessage(error) {
     if (error.status === 400) {
         return error.apiMessage
@@ -834,6 +1353,39 @@ function getSaveFailureMessage(error) {
     }
 
     return "本を保存できませんでした。入力内容は残っています。時間をおいて再度お試しください。";
+}
+
+async function finishBookEditSave(bookId, resultMessage = "") {
+    const { detailError, listError } = await refreshBookViews(bookId);
+
+    clearEditingState();
+    setDetailViewControlsDisabled(false);
+
+    if (detailError !== null) {
+        currentBookDetail = null;
+        setDetailActionsUnavailable();
+        showBookDetailMessage(
+            resultMessage !== ""
+                ? `${resultMessage} また、最新の詳細情報を取得できませんでした。ページを再読み込みしてください。`
+                : "保存は完了しましたが、最新の詳細情報を取得できませんでした。ページを再読み込みしてください。",
+            "error"
+        );
+        return false;
+    }
+
+    setDetailActionsForView();
+
+    if (resultMessage !== "" || listError !== null) {
+        const listMessage = listError !== null
+            ? "一覧の最新情報を取得できなかったため、ページを再読み込みしてください。"
+            : "";
+
+        setCompletionActionError([resultMessage, listMessage].filter(Boolean).join(" "));
+        return false;
+    }
+
+    bookDetailEditButton.focus();
+    return true;
 }
 
 async function saveBookEdits(event) {
@@ -850,59 +1402,74 @@ async function saveBookEdits(event) {
     }
 
     const savedBookId = editingBookId;
-    const bookApiUrl = getBookApiUrl(savedBookId);
     const updatePayload = createUpdateBookPayload(form);
-    let updateCompleted = false;
+    const hasGeneralChanges = hasGeneralBookEdits(form, editBookSnapshot);
+    const targetCompletionState = getSelectedCompletionState(form);
+    const hasCompletionSelectionChange = targetCompletionState !== Boolean(editBookSnapshot.isCompleted);
+    let generalUpdateCompleted = false;
+    let completionRequestStarted = false;
+    let completionUpdateCompleted = false;
+    let updatesCompleted = false;
+
+    if (!hasGeneralChanges && !hasCompletionSelectionChange) {
+        const bookBeforeEditing = editBookSnapshot;
+
+        clearEditingState();
+        renderBookDetail(bookBeforeEditing);
+        bookDetailEditButton.focus();
+        return;
+    }
 
     setBookEditError("");
     setBookSavingState(true);
 
     try {
-        const response = await fetch(bookApiUrl, {
-            method: "PUT",
-            headers: {
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify(updatePayload)
-        });
+        let completionStateAfterGeneralUpdate = Boolean(editBookSnapshot.isCompleted);
 
-        if (!response.ok) {
-            const error = new Error(`PUT ${bookApiUrl} failed: ${response.status}`);
+        if (hasGeneralChanges) {
+            await updateBookDetails(savedBookId, updatePayload);
+            generalUpdateCompleted = true;
 
-            error.status = response.status;
-            error.apiMessage = await readApiErrorMessage(response);
-            throw error;
+            const bookAfterGeneralUpdate = await fetchBookDetail(savedBookId);
+
+            completionStateAfterGeneralUpdate = Boolean(bookAfterGeneralUpdate.isCompleted);
         }
 
-        updateCompleted = true;
+        if (hasCompletionSelectionChange
+            || completionStateAfterGeneralUpdate !== targetCompletionState) {
+            completionRequestStarted = true;
+            await updateBookCompletion(savedBookId, targetCompletionState);
+            completionUpdateCompleted = true;
+        }
 
-        const [latestBook, books] = await Promise.all([
-            fetchBookDetail(savedBookId),
-            fetchBooks()
-        ]);
-
-        clearEditingState();
-        renderBooks(books);
-        updateResultCount(books.length);
-        setSelectedBook(savedBookId);
-        renderBookDetail(latestBook);
-        bookDetailEditButton.focus();
+        updatesCompleted = true;
+        await finishBookEditSave(savedBookId);
     } catch (error) {
         console.error("本を保存できませんでした。", error);
 
-        if (updateCompleted) {
-            clearEditingState();
-            currentBookDetail = null;
-            setDetailActionsUnavailable();
-            showBookDetailMessage(
-                "保存は完了しましたが、最新情報を再取得できませんでした。一覧から本を選び直してください。",
-                "error"
+        if (updatesCompleted || completionUpdateCompleted) {
+            await finishBookEditSave(
+                savedBookId,
+                "保存は完了しましたが、最新情報を画面へ反映できませんでした。"
             );
             return;
         }
 
+        if (generalUpdateCompleted) {
+            const partialSaveMessage = completionRequestStarted
+                ? `一般情報は保存されましたが、${getCompletionFailureMessage(error, targetCompletionState)}`
+                : "一般情報は保存されましたが、保存後の読了状態を確認できなかったため、読了状態の変更は行っていません。";
+
+            await finishBookEditSave(savedBookId, partialSaveMessage);
+            return;
+        }
+
         setBookSavingState(false);
-        setBookEditError(getSaveFailureMessage(error));
+        setBookEditError(
+            completionRequestStarted
+                ? getCompletionFailureMessage(error, targetCompletionState)
+                : getSaveFailureMessage(error)
+        );
     }
 }
 
