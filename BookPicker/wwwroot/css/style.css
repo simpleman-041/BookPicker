@@ -473,13 +473,47 @@ select:focus-visible {
 
 .detail-panel__edit {
     padding: 0.45rem 0.85rem;
+    color: var(--color-accent-dark);
+    font-weight: 700;
+    background: var(--color-accent-soft);
+    border: 1px solid #9bb4a5;
+    border-radius: 0.5rem;
+}
+
+.detail-panel__edit:hover {
+    background: #cfdfd4;
+}
+
+.detail-panel__edit--save {
+    color: #ffffff;
+    background: var(--color-accent);
+    border-color: var(--color-accent);
+}
+
+.detail-panel__edit--save:hover {
+    background: var(--color-accent-dark);
+}
+
+.detail-panel__cancel {
+    padding: 0.45rem 0.7rem;
     color: var(--color-muted);
-    background: var(--color-canvas);
+    background: var(--color-surface);
     border: 1px solid var(--color-border);
     border-radius: 0.5rem;
 }
 
+.detail-panel__cancel:hover {
+    color: var(--color-ink);
+    background: var(--color-canvas);
+}
+
+.detail-panel__cancel[hidden] {
+    display: none;
+}
+
 .detail-panel__edit:disabled,
+.detail-panel__cancel:disabled,
+.detail-panel__close:disabled,
 .detail-panel__delete:disabled {
     cursor: not-allowed;
     opacity: 0.65;
@@ -533,6 +567,35 @@ select:focus-visible {
     overflow-wrap: anywhere;
 }
 
+.detail-book__field {
+    min-width: 0;
+    display: grid;
+    gap: 0.4rem;
+}
+
+.detail-book__field-label {
+    color: var(--color-muted);
+    font-size: 0.78rem;
+    font-weight: 700;
+}
+
+.detail-book__input,
+.detail-book__select {
+    min-width: 0;
+    width: 100%;
+    padding: 0.62rem 0.7rem;
+    color: var(--color-ink);
+    background: var(--color-surface);
+    border: 1px solid #aeb6af;
+    border-radius: 0.45rem;
+}
+
+.detail-book__title-input {
+    font-size: clamp(1.2rem, 2vw, 1.5rem);
+    font-weight: 700;
+    line-height: 1.4;
+}
+
 .detail-book__progress {
     display: grid;
     gap: 0.55rem;
@@ -554,6 +617,24 @@ select:focus-visible {
 
 .detail-book__progress-text {
     font-size: 1.15rem;
+    font-weight: 700;
+}
+
+.detail-book__progress-inputs {
+    min-width: 0;
+    display: grid;
+    grid-template-columns: minmax(4.5rem, 1fr) auto minmax(4.5rem, 1fr);
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.detail-book__page-input {
+    padding-right: 0.35rem;
+    text-align: right;
+}
+
+.detail-book__progress-separator {
+    color: var(--color-muted);
     font-weight: 700;
 }
 
@@ -618,6 +699,34 @@ select:focus-visible {
     margin: 0;
     font-weight: 700;
     overflow-wrap: anywhere;
+}
+
+.detail-book__metadata-item--editable dd {
+    font-weight: 400;
+}
+
+.detail-book__edit-error,
+.detail-book__saving-status {
+    padding: 0.75rem 0.85rem;
+    margin: 0;
+    border-radius: 0.5rem;
+}
+
+.detail-book__edit-error {
+    color: #7c2929;
+    background: var(--color-danger-soft);
+    border: 1px solid #d9aaa5;
+}
+
+.detail-book__saving-status {
+    color: var(--color-accent-dark);
+    background: var(--color-accent-soft);
+    border: 1px solid #b9cbbf;
+}
+
+.detail-book__edit-error[hidden],
+.detail-book__saving-status[hidden] {
+    display: none;
 }
 
 .detail-book__completion {
