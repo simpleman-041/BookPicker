@@ -125,12 +125,28 @@
             id="book-detail-panel"
             class="detail-panel"
             aria-labelledby="detail-panel-heading"
+            aria-busy="false"
             hidden>
             <header class="detail-panel__header">
                 <h2 id="detail-panel-heading">本の詳細</h2>
-                <button class="icon-button detail-panel__close" type="button" aria-label="詳細パネルを閉じる">×</button>
+                <div class="detail-panel__header-actions">
+                    <button
+                        class="detail-panel__edit"
+                        type="button"
+                        title="編集機能は現在準備中です"
+                        disabled>
+                        編集
+                    </button>
+                    <button
+                        id="book-detail-close"
+                        class="icon-button detail-panel__close"
+                        type="button"
+                        aria-label="詳細パネルを閉じる">
+                        ×
+                    </button>
+                </div>
             </header>
-            <div id="book-detail-content" class="detail-panel__content"></div>
+            <div id="book-detail-content" class="detail-panel__content" aria-live="polite"></div>
         </aside>
     </main>
 
