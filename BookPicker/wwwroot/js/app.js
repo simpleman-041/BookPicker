@@ -166,6 +166,10 @@ let bookDetailAbortController = null;
 let currentBookDetail = null;
 let editingBookId = null;
 let editBookSnapshot = null;
+let pendingEditCoverFile = null;
+let pendingEditCoverPreviewUrl = null;
+let pendingCreateCoverFile = null;
+let pendingCreateCoverPreviewUrl = null;
 let isSavingBook = false;
 let isCreatingBook = false;
 let isRegisteringBook = false;
@@ -173,6 +177,7 @@ let createBookReturnState = null;
 let isUpdatingCompletion = false;
 let completionUpdateTarget = null;
 let isUpdatingProgress = false;
+let isUploadingCover = false;
 let isDeletingBook = false;
 let deleteDialogReturnFocus = null;
 let isSearchingBooks = false;
@@ -199,6 +204,10 @@ function getBookCompletionApiUrl(bookId) {
 
 function getBookProgressApiUrl(bookId) {
     return `${getBookApiUrl(bookId)}/progress`;
+}
+
+function getBookCoverApiUrl(bookId) {
+    return `${getBookApiUrl(bookId)}/cover`;
 }
 
 function buildBooksApiUrl(queryState = bookListQueryState) {
@@ -605,7 +614,149 @@ function isDetailUpdateInProgress() {
         || isRegisteringBook
         || isUpdatingCompletion
         || isUpdatingProgress
+        || isUploadingCover
         || isDeletingBook;
+}
+
+function createCoverUploadControl(book, options = {}) {
+    const imageSource = options.imageSource ?? getCoverImagePath(book.coverImagePath);
+    const isChangePending = options.isChangePending === true;
+    const pendingLabelText = options.pendingLabelText ?? "変更予定";
+    const showUploadFeedback = options.showUploadFeedback !== false;
+    const onFileSelected = options.onFileSelected
+        ?? ((selectedFile) => requestBookCoverUpload(book, selectedFile));
+    const container = document.createElement("div");
+    const cover = document.createElement("figure");
+    const selectButton = document.createElement("button");
+    const coverImage = document.createElement("img");
+    const hoverLabel = createTextElement("span", "detail-book__cover-label", "表紙を変更");
+    const pendingLabel = createTextElement("span", "detail-book__cover-pending", pendingLabelText);
+    const fileInput = document.createElement("input");
+    const errorMessage = showUploadFeedback
+        ? createTextElement("p", "detail-book__cover-error", "")
+        : null;
+    const uploadingStatus = showUploadFeedback
+        ? createTextElement("p", "detail-book__cover-status", "表紙をアップロードしています…")
+        : null;
+
+    container.className = "detail-book__cover-upload";
+    cover.className = "detail-book__cover";
+
+    selectButton.id = "book-cover-select";
+    selectButton.className = "detail-book__cover-button";
+    selectButton.type = "button";
+    selectButton.title = "クリックして表紙画像を変更";
+    selectButton.setAttribute("aria-label", `${book.title || "本"}の表紙画像を変更`);
+    selectButton.classList.toggle("detail-book__cover-button--pending", isChangePending);
+    selectButton.disabled = isDetailUpdateInProgress();
+    selectButton.addEventListener("click", () => {
+        if (!isDetailUpdateInProgress()) {
+            fileInput.click();
+        }
+    });
+
+    coverImage.id = "book-cover-preview";
+    coverImage.src = imageSource;
+    coverImage.alt = `${book.title || "本"}の表紙`;
+    coverImage.addEventListener("error", () => {
+        coverImage.src = DEFAULT_COVER_IMAGE_PATH;
+    }, { once: true });
+
+    fileInput.id = "book-cover-file";
+    fileInput.className = "visually-hidden";
+    fileInput.type = "file";
+    fileInput.name = "file";
+    fileInput.accept = ".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp";
+    fileInput.disabled = isDetailUpdateInProgress();
+    fileInput.addEventListener("change", () => {
+        const selectedFile = fileInput.files?.[0];
+
+        fileInput.value = "";
+        if (selectedFile !== undefined) {
+            onFileSelected(selectedFile);
+        }
+    });
+
+    pendingLabel.hidden = !isChangePending;
+
+    if (errorMessage !== null && uploadingStatus !== null) {
+        errorMessage.id = "book-cover-error";
+        errorMessage.setAttribute("role", "alert");
+        errorMessage.hidden = true;
+
+        uploadingStatus.id = "book-cover-status";
+        uploadingStatus.setAttribute("role", "status");
+        uploadingStatus.hidden = !isUploadingCover;
+    }
+
+    selectButton.append(coverImage, hoverLabel, pendingLabel);
+    cover.appendChild(selectButton);
+    container.append(cover, fileInput);
+
+    if (errorMessage !== null && uploadingStatus !== null) {
+        container.append(errorMessage, uploadingStatus);
+    }
+
+    return container;
+}
+
+function releaseCoverPreviewUrl(previewUrl) {
+    if (previewUrl !== null) {
+        URL.revokeObjectURL(previewUrl);
+    }
+
+    return null;
+}
+
+function showPendingCoverPreview(previewUrl, pendingLabelText) {
+    const previewImage = document.getElementById("book-cover-preview");
+    const selectButton = document.getElementById("book-cover-select");
+    const pendingLabel = document.querySelector(".detail-book__cover-pending");
+
+    if (previewImage !== null) {
+        previewImage.src = previewUrl;
+    }
+
+    if (selectButton !== null) {
+        selectButton.classList.add("detail-book__cover-button--pending");
+    }
+
+    if (pendingLabel !== null) {
+        pendingLabel.textContent = pendingLabelText;
+        pendingLabel.hidden = false;
+    }
+}
+
+function clearPendingEditCover() {
+    pendingEditCoverPreviewUrl = releaseCoverPreviewUrl(pendingEditCoverPreviewUrl);
+
+    pendingEditCoverFile = null;
+}
+
+function setPendingEditCover(file) {
+    clearPendingEditCover();
+
+    pendingEditCoverFile = file;
+    pendingEditCoverPreviewUrl = URL.createObjectURL(file);
+
+    showPendingCoverPreview(pendingEditCoverPreviewUrl, "変更予定");
+
+    setBookEditError("");
+}
+
+function clearPendingCreateCover() {
+    pendingCreateCoverPreviewUrl = releaseCoverPreviewUrl(pendingCreateCoverPreviewUrl);
+
+    pendingCreateCoverFile = null;
+}
+
+function setPendingCreateCover(file) {
+    clearPendingCreateCover();
+
+    pendingCreateCoverFile = file;
+    pendingCreateCoverPreviewUrl = URL.createObjectURL(file);
+    showPendingCoverPreview(pendingCreateCoverPreviewUrl, "選択済み");
+    setBookCreateError("");
 }
 
 function createBookProgressSection(book) {
@@ -743,8 +894,6 @@ function createBookDetail(book) {
     const title = createTextElement("h3", "detail-book__title", book.title || "タイトル未設定");
     const progressSection = createBookProgressSection(book);
     const main = document.createElement("div");
-    const cover = document.createElement("figure");
-    const coverImage = document.createElement("img");
     const metadata = document.createElement("dl");
     const footer = document.createElement("footer");
     const deleteButton = createTextElement("button", "detail-panel__delete", "削除");
@@ -752,13 +901,6 @@ function createBookDetail(book) {
     article.className = "detail-book";
 
     main.className = "detail-book__main";
-    cover.className = "detail-book__cover";
-    coverImage.src = getCoverImagePath(book.coverImagePath);
-    coverImage.alt = `${book.title || "本"}の表紙`;
-    coverImage.addEventListener("error", () => {
-        coverImage.src = DEFAULT_COVER_IMAGE_PATH;
-    }, { once: true });
-    cover.appendChild(coverImage);
 
     metadata.className = "detail-book__metadata";
     metadata.append(
@@ -774,7 +916,7 @@ function createBookDetail(book) {
             "detail-book__last-read"
         )
     );
-    main.append(cover, metadata);
+    main.append(createCoverUploadControl(book), metadata);
 
     footer.className = "detail-book__footer";
     deleteButton.type = "button";
@@ -889,8 +1031,6 @@ function createBookEditForm(book) {
     const progressBar = document.createElement("span");
     const progressValue = document.createElement("span");
     const main = document.createElement("div");
-    const cover = document.createElement("figure");
-    const coverImage = document.createElement("img");
     const metadata = document.createElement("dl");
     const genreSelect = createEnumSelect(
         "book-edit-genre",
@@ -999,13 +1139,6 @@ function createBookEditForm(book) {
     updateProgressPreview();
 
     main.className = "detail-book__main";
-    cover.className = "detail-book__cover";
-    coverImage.src = getCoverImagePath(book.coverImagePath);
-    coverImage.alt = `${book.title || "本"}の表紙`;
-    coverImage.addEventListener("error", () => {
-        coverImage.src = DEFAULT_COVER_IMAGE_PATH;
-    }, { once: true });
-    cover.appendChild(coverImage);
 
     metadata.className = "detail-book__metadata detail-book__metadata--editing";
     metadata.append(
@@ -1022,7 +1155,15 @@ function createBookEditForm(book) {
             "detail-book__last-read"
         )
     );
-    main.append(cover, metadata);
+    main.append(
+        createCoverUploadControl(book, {
+            imageSource: pendingEditCoverPreviewUrl ?? getCoverImagePath(book.coverImagePath),
+            isChangePending: pendingEditCoverFile !== null,
+            showUploadFeedback: false,
+            onFileSelected: setPendingEditCover
+        }),
+        metadata
+    );
 
     errorMessage.id = "book-edit-error";
     errorMessage.setAttribute("role", "alert");
@@ -1061,6 +1202,8 @@ function createBookCreationForm() {
         "detail-book__create-introduction",
         "各項目を入力・選択して、「登録」を押してください。"
     );
+    const coverField = document.createElement("div");
+    const coverFieldLabel = createTextElement("p", "detail-book__field-label", "表紙（任意）");
     const fields = document.createElement("div");
     const titleInput = document.createElement("input");
     const totalPagesInput = document.createElement("input");
@@ -1093,6 +1236,7 @@ function createBookCreationForm() {
     form.addEventListener("submit", registerBook);
 
     introduction.id = "book-create-introduction";
+    coverField.className = "detail-book__field detail-book__create-cover";
     fields.className = "detail-book__create-fields";
 
     titleInput.id = "book-create-title";
@@ -1119,6 +1263,20 @@ function createBookCreationForm() {
         createBookFormField("興味レベル", interestLevelSelect)
     );
 
+    coverField.append(
+        coverFieldLabel,
+        createCoverUploadControl(
+            { title: "新しい本", coverImagePath: null },
+            {
+                imageSource: pendingCreateCoverPreviewUrl ?? DEFAULT_COVER_IMAGE_PATH,
+                isChangePending: pendingCreateCoverFile !== null,
+                pendingLabelText: "選択済み",
+                showUploadFeedback: false,
+                onFileSelected: setPendingCreateCover
+            }
+        )
+    );
+
     errorMessage.id = "book-create-error";
     errorMessage.setAttribute("role", "alert");
     errorMessage.hidden = true;
@@ -1126,7 +1284,7 @@ function createBookCreationForm() {
     registeringStatus.setAttribute("role", "status");
     registeringStatus.hidden = true;
 
-    form.append(introduction, fields, errorMessage, registeringStatus);
+    form.append(introduction, coverField, fields, errorMessage, registeringStatus);
     return form;
 }
 
@@ -1181,6 +1339,7 @@ function setDetailActionsForCreate() {
 }
 
 function clearEditingState() {
+    clearPendingEditCover();
     editingBookId = null;
     editBookSnapshot = null;
     isSavingBook = false;
@@ -1188,6 +1347,7 @@ function clearEditingState() {
 }
 
 function clearCreatingState() {
+    clearPendingCreateCover();
     isCreatingBook = false;
     isRegisteringBook = false;
     createBookReturnState = null;
@@ -1222,6 +1382,7 @@ function startBookEditing() {
         return;
     }
 
+    clearPendingEditCover();
     editingBookId = String(currentBookDetail.id);
     editBookSnapshot = { ...currentBookDetail };
     bookDetailContent.replaceChildren(createBookEditForm(editBookSnapshot));
@@ -1251,6 +1412,7 @@ function startBookCreation() {
     }
 
     clearEditingState();
+    clearPendingCreateCover();
     createBookReturnState = returnBookId === null
         ? null
         : { bookId: returnBookId, book: returnBook };
@@ -1338,7 +1500,8 @@ function hasUnsavedBookEdits() {
     }
 
     return hasGeneralBookEdits(form, editBookSnapshot)
-        || getSelectedCompletionState(form) !== Boolean(editBookSnapshot.isCompleted);
+        || getSelectedCompletionState(form) !== Boolean(editBookSnapshot.isCompleted)
+        || pendingEditCoverFile !== null;
 }
 
 function hasUnsavedBookCreationInput() {
@@ -1351,7 +1514,8 @@ function hasUnsavedBookCreationInput() {
     return form.elements.title.value !== ""
         || form.elements.totalPages.value !== ""
         || form.elements.genre.value !== ""
-        || form.elements.interestLevel.value !== "";
+        || form.elements.interestLevel.value !== ""
+        || pendingCreateCoverFile !== null;
 }
 
 function hasUnsavedPanelChanges() {
@@ -1657,7 +1821,10 @@ async function registerBook(event) {
     }
 
     const createPayload = createBookPayload(form);
+    const selectedCoverFile = pendingCreateCoverFile;
     let bookWasCreated = false;
+    let createdBookId = null;
+    let coverUploadCompleted = false;
 
     setBookCreateError("");
     setBookRegisteringState(true);
@@ -1667,7 +1834,20 @@ async function registerBook(event) {
 
         bookWasCreated = true;
 
-        const createdBookId = getCreatedBookId(createdBook);
+        createdBookId = getCreatedBookId(createdBook);
+
+        if (selectedCoverFile !== null) {
+            if (createdBookId === null) {
+                const error = new Error("Created book ID was not returned by POST /api/books.");
+
+                error.code = "created-book-id-unavailable";
+                throw error;
+            }
+
+            await uploadBookCover(createdBookId, selectedCoverFile);
+            coverUploadCompleted = true;
+        }
+
         const books = await fetchBooks();
         const createdBookIsVisible = createdBookId !== null
             && containsBookId(books, createdBookId);
@@ -1685,26 +1865,62 @@ async function registerBook(event) {
         closeBookDetailPanel();
         addBookButton.focus();
     } catch (error) {
-        console.error(
-            bookWasCreated
-                ? "本の登録後に一覧を再取得できませんでした。"
-                : "本を登録できませんでした。",
-            error
-        );
-        setBookRegisteringState(false);
+        if (!bookWasCreated) {
+            console.error("本を登録できませんでした。", error);
+            setBookRegisteringState(false);
+            setBookCreateError(getCreateFailureMessage(error));
+            return;
+        }
 
-        if (bookWasCreated) {
+        const coverUploadFailed = selectedCoverFile !== null && !coverUploadCompleted;
+        const coverFailureMessage = error.code === "created-book-id-unavailable"
+            ? "本は登録されましたが、表紙画像の設定に必要なBook IDを取得できませんでした。"
+            : `本は登録されましたが、表紙画像の設定に失敗しました。${getCoverUploadFailureMessage(error)}`;
+
+        try {
+            const books = await fetchBooks();
+            const createdBookIsVisible = createdBookId !== null
+                && containsBookId(books, createdBookId);
+
+            updateBookList(books);
+            form.reset();
+            setBookRegisteringState(false);
+            clearCreatingState();
+
+            if (coverUploadFailed) {
+                if (createdBookIsVisible) {
+                    await showBookDetail(createdBookId);
+                    setCompletionActionError(coverFailureMessage);
+                    return;
+                }
+
+                setDetailActionsUnavailable();
+                showBookDetailMessage(coverFailureMessage, "error");
+                return;
+            }
+
+            if (createdBookIsVisible) {
+                await showBookDetail(createdBookId);
+                return;
+            }
+
+            closeBookDetailPanel();
+            addBookButton.focus();
+        } catch (refreshError) {
+            console.error("本の登録後に一覧を再取得できませんでした。", refreshError);
+            form.reset();
+            setBookRegisteringState(false);
+            clearCreatingState();
             closeBookDetailPanel();
             showListMessage(
-                "本は登録されましたが、一覧の最新情報を取得できませんでした。ページを再読み込みしてください。",
+                coverUploadFailed
+                    ? `${coverFailureMessage} また、一覧の最新情報を取得できませんでした。ページを再読み込みしてください。`
+                    : "本は登録されましたが、一覧の最新情報を取得できませんでした。ページを再読み込みしてください。",
                 "error"
             );
             updateResultCount(null);
             addBookButton.focus();
-            return;
         }
-
-        setBookCreateError(getCreateFailureMessage(error));
     }
 }
 
@@ -1734,6 +1950,8 @@ function setDetailViewControlsDisabled(isDisabled) {
     const progressInput = document.getElementById("book-progress-current-page");
     const progressButton = document.getElementById("book-progress-update");
     const completionButton = document.getElementById("book-completion-action");
+    const coverButton = document.getElementById("book-cover-select");
+    const coverInput = document.getElementById("book-cover-file");
     const deleteButton = document.getElementById("book-detail-delete");
 
     if (progressInput !== null) {
@@ -1746,6 +1964,14 @@ function setDetailViewControlsDisabled(isDisabled) {
 
     if (completionButton !== null) {
         completionButton.disabled = isDisabled;
+    }
+
+    if (coverButton !== null) {
+        coverButton.disabled = isDisabled;
+    }
+
+    if (coverInput !== null) {
+        coverInput.disabled = isDisabled;
     }
 
     if (deleteButton !== null) {
@@ -1917,6 +2143,131 @@ function setProgressUpdatingState(isUpdating) {
 
     if (updatingStatus !== null) {
         updatingStatus.hidden = !isUpdating;
+    }
+}
+
+function setCoverUploadError(message) {
+    const errorMessage = document.getElementById("book-cover-error");
+
+    if (errorMessage === null) {
+        return;
+    }
+
+    errorMessage.textContent = message;
+    errorMessage.hidden = message === "";
+}
+
+function setCoverUploadingState(isUploading) {
+    const selectButton = document.getElementById("book-cover-select");
+    const uploadingStatus = document.getElementById("book-cover-status");
+
+    isUploadingCover = isUploading;
+    bookDetailPanel.setAttribute("aria-busy", String(isUploading));
+    bookDetailEditButton.disabled = isUploading || currentBookDetail === null;
+    bookDetailCloseButton.disabled = isUploading;
+    setDetailViewControlsDisabled(isUploading);
+
+    if (selectButton !== null) {
+        selectButton.disabled = isUploading;
+    }
+
+    if (uploadingStatus !== null) {
+        uploadingStatus.hidden = !isUploading;
+    }
+}
+
+async function uploadBookCover(bookId, file) {
+    const coverApiUrl = getBookCoverApiUrl(bookId);
+    const formData = new FormData();
+
+    formData.append("file", file);
+
+    const response = await fetch(coverApiUrl, {
+        method: "POST",
+        body: formData
+    });
+
+    if (!response.ok) {
+        const error = new Error(`POST ${coverApiUrl} failed: ${response.status}`);
+
+        error.status = response.status;
+        error.apiMessage = await readApiErrorMessage(response);
+        throw error;
+    }
+}
+
+function getCoverUploadFailureMessage(error) {
+    if (error.status === 400) {
+        return error.apiMessage || "表紙画像をアップロードできませんでした。画像ファイルを確認してください。";
+    }
+
+    if (error.status === 404) {
+        return "この本は見つかりませんでした。すでに削除された可能性があります。";
+    }
+
+    return "表紙画像をアップロードできませんでした。時間をおいて再度お試しください。";
+}
+
+function getCoverRefreshFailureMessage(detailError, listError) {
+    if (detailError !== null && listError !== null) {
+        return "表紙は変更されましたが、詳細と一覧の最新情報を再取得できませんでした。ページを再読み込みしてください。";
+    }
+
+    if (detailError !== null) {
+        return detailError.status === 404
+            ? "表紙は変更されましたが、この本の最新情報を取得できませんでした。一覧を更新して再度お試しください。"
+            : "表紙は変更されましたが、詳細の最新情報を再取得できませんでした。本を選び直してください。";
+    }
+
+    return "表紙は変更され、詳細を更新しましたが、一覧の最新情報を再取得できませんでした。ページを再読み込みしてください。";
+}
+
+async function requestBookCoverUpload(book, file) {
+    if (isDetailUpdateInProgress()
+        || editingBookId !== null
+        || String(book.id) !== selectedBookId) {
+        return;
+    }
+
+    const bookId = String(book.id);
+    let coverUpdated = false;
+    let refreshCompleted = false;
+
+    setCoverUploadError("");
+    setCoverUploadingState(true);
+
+    try {
+        await uploadBookCover(bookId, file);
+        coverUpdated = true;
+
+        const { detailError, listError } = await refreshBookViews(bookId);
+
+        if (detailError !== null || listError !== null) {
+            console.error("表紙の変更後に最新情報を再取得できませんでした。", {
+                detailError,
+                listError
+            });
+            setCoverUploadError(getCoverRefreshFailureMessage(detailError, listError));
+            return;
+        }
+
+        refreshCompleted = true;
+    } catch (error) {
+        if (coverUpdated) {
+            console.error("表紙の変更後に最新情報を画面へ反映できませんでした。", error);
+            setCoverUploadError(
+                "表紙は変更されましたが、最新情報を画面へ反映できませんでした。ページを再読み込みしてください。"
+            );
+        } else {
+            console.error("表紙画像をアップロードできませんでした。", error);
+            setCoverUploadError(getCoverUploadFailureMessage(error));
+        }
+    } finally {
+        setCoverUploadingState(false);
+    }
+
+    if (refreshCompleted) {
+        document.getElementById("book-cover-select")?.focus();
     }
 }
 
@@ -2194,6 +2545,8 @@ function setBookEditError(message) {
 
 function setBookSavingState(isSaving) {
     const savingStatus = document.getElementById("book-saving-status");
+    const coverButton = document.getElementById("book-cover-select");
+    const coverInput = document.getElementById("book-cover-file");
 
     isSavingBook = isSaving;
     bookDetailPanel.setAttribute("aria-busy", String(isSaving));
@@ -2201,6 +2554,14 @@ function setBookSavingState(isSaving) {
     bookDetailEditButton.disabled = isSaving;
     bookDetailCancelButton.disabled = isSaving;
     bookDetailCloseButton.disabled = isSaving;
+
+    if (coverButton !== null) {
+        coverButton.disabled = isSaving;
+    }
+
+    if (coverInput !== null) {
+        coverInput.disabled = isSaving;
+    }
 
     if (savingStatus !== null) {
         savingStatus.hidden = !isSaving;
@@ -2300,14 +2661,18 @@ async function saveBookEdits(event) {
     const savedBookId = editingBookId;
     const updatePayload = createUpdateBookPayload(form);
     const hasGeneralChanges = hasGeneralBookEdits(form, editBookSnapshot);
+    const selectedCoverFile = pendingEditCoverFile;
+    const hasPendingCoverChange = selectedCoverFile !== null;
     const targetCompletionState = getSelectedCompletionState(form);
     const hasCompletionSelectionChange = targetCompletionState !== Boolean(editBookSnapshot.isCompleted);
     let generalUpdateCompleted = false;
+    let coverUploadStarted = false;
+    let coverUploadCompleted = false;
     let completionRequestStarted = false;
     let completionUpdateCompleted = false;
     let updatesCompleted = false;
 
-    if (!hasGeneralChanges && !hasCompletionSelectionChange) {
+    if (!hasGeneralChanges && !hasCompletionSelectionChange && !hasPendingCoverChange) {
         const bookBeforeEditing = editBookSnapshot;
 
         clearEditingState();
@@ -2322,9 +2687,15 @@ async function saveBookEdits(event) {
     try {
         let completionStateAfterGeneralUpdate = Boolean(editBookSnapshot.isCompleted);
 
-        if (hasGeneralChanges) {
+        if (hasGeneralChanges || hasPendingCoverChange) {
             await updateBookDetails(savedBookId, updatePayload);
             generalUpdateCompleted = true;
+
+            if (selectedCoverFile !== null) {
+                coverUploadStarted = true;
+                await uploadBookCover(savedBookId, selectedCoverFile);
+                coverUploadCompleted = true;
+            }
 
             const bookAfterGeneralUpdate = await fetchBookDetail(savedBookId);
 
@@ -2348,6 +2719,23 @@ async function saveBookEdits(event) {
                 savedBookId,
                 "保存は完了しましたが、最新情報を画面へ反映できませんでした。"
             );
+            return;
+        }
+
+        if (generalUpdateCompleted && coverUploadStarted && !coverUploadCompleted) {
+            await finishBookEditSave(
+                savedBookId,
+                `一般情報は保存されましたが、${getCoverUploadFailureMessage(error)}`
+            );
+            return;
+        }
+
+        if (generalUpdateCompleted && coverUploadCompleted) {
+            const partialSaveMessage = completionRequestStarted
+                ? `一般情報と表紙は保存されましたが、${getCompletionFailureMessage(error, targetCompletionState)}`
+                : "一般情報と表紙は保存されましたが、最新情報を確認できませんでした。";
+
+            await finishBookEditSave(savedBookId, partialSaveMessage);
             return;
         }
 

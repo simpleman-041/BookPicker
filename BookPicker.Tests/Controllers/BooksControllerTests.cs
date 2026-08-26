@@ -2,14 +2,186 @@ using BookPicker.Controllers;
 using BookPicker.Data;
 using BookPicker.Models;
 using BookPicker.Requests;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.FileProviders;
 
 namespace BookPicker.Tests.Controllers;
 
 public class BooksControllerTests
 {
+    [Fact]
+    public async Task UploadCover_WithMissingBook_ReturnsNotFoundWithoutCreatingUploadDirectory()
+    {
+        using var database = new TestDatabase();
+        using var stream = new MemoryStream([1, 2, 3]);
+        var file = CreateFormFile(stream, "cover.jpg", "image/jpeg");
+
+        var result = await database.Controller.UploadCover(999, file);
+
+        Assert.IsType<NotFoundResult>(result);
+        Assert.False(Directory.Exists(database.CoversDirectoryPath));
+    }
+
+    [Fact]
+    public async Task UploadCover_WithEmptyFile_ReturnsBadRequest()
+    {
+        using var database = new TestDatabase();
+        var book = database.AddBook();
+        using var stream = new MemoryStream();
+        var file = CreateFormFile(stream, "cover.png", "image/png");
+
+        var result = await database.Controller.UploadCover(book.Id, file);
+
+        var badRequest = Assert.IsType<BadRequestObjectResult>(result);
+        Assert.Equal("画像ファイルを選択してください。", badRequest.Value);
+        Assert.Null(book.CoverImagePath);
+    }
+
+    [Fact]
+    public async Task UploadCover_WithUnsupportedExtension_ReturnsBadRequest()
+    {
+        using var database = new TestDatabase();
+        var book = database.AddBook();
+        using var stream = new MemoryStream([1, 2, 3]);
+        var file = CreateFormFile(stream, "cover.gif", "image/gif");
+
+        var result = await database.Controller.UploadCover(book.Id, file);
+
+        Assert.IsType<BadRequestObjectResult>(result);
+        Assert.Null(book.CoverImagePath);
+    }
+
+    [Fact]
+    public async Task UploadCover_WithContentTypeThatDoesNotMatchExtension_ReturnsBadRequest()
+    {
+        using var database = new TestDatabase();
+        var book = database.AddBook();
+        using var stream = new MemoryStream([1, 2, 3]);
+        var file = CreateFormFile(stream, "cover.png", "image/jpeg");
+
+        var result = await database.Controller.UploadCover(book.Id, file);
+
+        var badRequest = Assert.IsType<BadRequestObjectResult>(result);
+        Assert.Equal("画像のContent-Typeがファイル形式と一致しません。", badRequest.Value);
+        Assert.Null(book.CoverImagePath);
+    }
+
+    [Fact]
+    public async Task UploadCover_WithFileLargerThanFiveMegabytes_ReturnsBadRequest()
+    {
+        using var database = new TestDatabase();
+        var book = database.AddBook();
+        using var stream = new MemoryStream(new byte[(5 * 1024 * 1024) + 1]);
+        var file = CreateFormFile(stream, "cover.webp", "image/webp");
+
+        var result = await database.Controller.UploadCover(book.Id, file);
+
+        var badRequest = Assert.IsType<BadRequestObjectResult>(result);
+        Assert.Equal("画像は5MB以下にしてください。", badRequest.Value);
+        Assert.Null(book.CoverImagePath);
+    }
+
+    [Theory]
+    [InlineData(".jpg", "image/jpeg")]
+    [InlineData(".jpeg", "image/jpeg")]
+    [InlineData(".png", "image/png")]
+    [InlineData(".webp", "image/webp")]
+    public async Task UploadCover_WithAllowedImage_UpdatesPathAndSavesGuidNamedFile(
+        string extension,
+        string contentType)
+    {
+        using var database = new TestDatabase();
+        var book = database.AddBook(currentPage: 10);
+        var previousLastReadAt = book.LastReadAt;
+        var originalBytes = new byte[] { 10, 20, 30, 40 };
+        using var stream = new MemoryStream(originalBytes);
+        var file = CreateFormFile(stream, $"user-supplied-name{extension}", contentType);
+
+        var result = await database.Controller.UploadCover(book.Id, file);
+
+        var ok = Assert.IsType<OkObjectResult>(result);
+        Assert.Same(book, ok.Value);
+        Assert.NotNull(book.CoverImagePath);
+        Assert.StartsWith("/uploads/covers/", book.CoverImagePath);
+        Assert.EndsWith(extension, book.CoverImagePath, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("user-supplied-name", book.CoverImagePath);
+
+        var generatedName = Path.GetFileNameWithoutExtension(book.CoverImagePath);
+        Assert.True(Guid.TryParseExact(generatedName, "N", out _));
+
+        var savedPhysicalPath = database.GetPhysicalPath(book.CoverImagePath);
+        Assert.True(File.Exists(savedPhysicalPath));
+        Assert.Equal(originalBytes, await File.ReadAllBytesAsync(savedPhysicalPath));
+        Assert.Equal(previousLastReadAt, book.LastReadAt);
+    }
+
+    [Fact]
+    public async Task UploadCover_WhenReplacingManagedCover_DeletesPreviousFileAfterUpdate()
+    {
+        using var database = new TestDatabase();
+        var previousCoverPath = $"/uploads/covers/{Guid.NewGuid():N}.png";
+        var previousPhysicalPath = database.CreateWebRootFile(previousCoverPath, [4, 5, 6]);
+        var book = database.AddBook(coverImagePath: previousCoverPath);
+        using var stream = new MemoryStream([1, 2, 3]);
+        var file = CreateFormFile(stream, "replacement.png", "image/png");
+
+        var result = await database.Controller.UploadCover(book.Id, file);
+
+        Assert.IsType<OkObjectResult>(result);
+        Assert.False(File.Exists(previousPhysicalPath));
+        Assert.True(File.Exists(database.GetPhysicalPath(book.CoverImagePath!)));
+    }
+
+    [Fact]
+    public async Task UploadCover_WhenReplacingDefaultCover_DoesNotDeleteDefaultFile()
+    {
+        using var database = new TestDatabase();
+        const string defaultCoverPath = "/images/default-book-cover.png";
+        var defaultPhysicalPath = database.CreateWebRootFile(defaultCoverPath, [7, 8, 9]);
+        var book = database.AddBook(coverImagePath: defaultCoverPath);
+        using var stream = new MemoryStream([1, 2, 3]);
+        var file = CreateFormFile(stream, "replacement.jpg", "image/jpeg");
+
+        var result = await database.Controller.UploadCover(book.Id, file);
+
+        Assert.IsType<OkObjectResult>(result);
+        Assert.True(File.Exists(defaultPhysicalPath));
+    }
+
+    [Fact]
+    public async Task UploadCover_WhenReplacingExternalUrl_DoesNotDeleteFilesOutsideManagedDirectory()
+    {
+        using var database = new TestDatabase();
+        var outsidePhysicalPath = database.CreateWebRootFile("/images/external-sentinel.png", [7, 8, 9]);
+        var book = database.AddBook(coverImagePath: "https://example.com/cover.png");
+        using var stream = new MemoryStream([1, 2, 3]);
+        var file = CreateFormFile(stream, "replacement.jpg", "image/jpeg");
+
+        var result = await database.Controller.UploadCover(book.Id, file);
+
+        Assert.IsType<OkObjectResult>(result);
+        Assert.True(File.Exists(outsidePhysicalPath));
+    }
+
+    [Fact]
+    public async Task UploadCover_WithTraversalInPreviousPath_DoesNotDeleteEscapedFile()
+    {
+        using var database = new TestDatabase();
+        var protectedPhysicalPath = database.CreateWebRootFile("/uploads/protected.jpg", [7, 8, 9]);
+        var book = database.AddBook(coverImagePath: "/uploads/covers/../protected.jpg");
+        using var stream = new MemoryStream([1, 2, 3]);
+        var file = CreateFormFile(stream, "replacement.jpg", "image/jpeg");
+
+        var result = await database.Controller.UploadCover(book.Id, file);
+
+        Assert.IsType<OkObjectResult>(result);
+        Assert.True(File.Exists(protectedPhysicalPath));
+    }
+
     [Fact]
     public async Task UpdateBook_WithValidRequest_UpdatesEditableValuesAndReturnsNoContent()
     {
@@ -412,6 +584,15 @@ public class BooksControllerTests
         return Assert.IsAssignableFrom<IEnumerable<Book>>(ok.Value).ToList();
     }
 
+    private static IFormFile CreateFormFile(Stream stream, string fileName, string contentType)
+    {
+        return new FormFile(stream, 0, stream.Length, "file", fileName)
+        {
+            Headers = new HeaderDictionary(),
+            ContentType = contentType
+        };
+    }
+
     private static UpdateBookRequest ValidUpdateRequest()
     {
         return new UpdateBookRequest
@@ -445,12 +626,22 @@ public class BooksControllerTests
     private sealed class TestDatabase : IDisposable
     {
         private readonly SqliteConnection _connection;
+        private readonly string _temporaryDirectory;
 
         public BookPickerDbContext Context { get; }
         public BooksController Controller { get; }
+        public string WebRootPath { get; }
+        public string CoversDirectoryPath => Path.Combine(WebRootPath, "uploads", "covers");
 
         public TestDatabase()
         {
+            _temporaryDirectory = Path.Combine(
+                Path.GetTempPath(),
+                "BookPicker.Tests",
+                Guid.NewGuid().ToString("N"));
+            WebRootPath = Path.Combine(_temporaryDirectory, "wwwroot");
+            Directory.CreateDirectory(WebRootPath);
+
             _connection = new SqliteConnection("Data Source=:memory:");
             _connection.Open();
             var options = new DbContextOptionsBuilder<BookPickerDbContext>()
@@ -458,7 +649,9 @@ public class BooksControllerTests
                 .Options;
             Context = new BookPickerDbContext(options);
             Context.Database.EnsureCreated();
-            Controller = new BooksController(Context);
+            Controller = new BooksController(
+                Context,
+                new TestWebHostEnvironment(_temporaryDirectory, WebRootPath));
         }
 
         public Book AddBook(
@@ -486,10 +679,46 @@ public class BooksControllerTests
             Context.SaveChanges();
         }
 
+        public string GetPhysicalPath(string webPath)
+        {
+            return Path.Combine(
+                WebRootPath,
+                webPath.TrimStart('/').Replace('/', Path.DirectorySeparatorChar));
+        }
+
+        public string CreateWebRootFile(string webPath, byte[] contents)
+        {
+            var physicalPath = GetPhysicalPath(webPath);
+            Directory.CreateDirectory(Path.GetDirectoryName(physicalPath)!);
+            File.WriteAllBytes(physicalPath, contents);
+            return physicalPath;
+        }
+
         public void Dispose()
         {
             Context.Dispose();
             _connection.Dispose();
+
+            if (Directory.Exists(_temporaryDirectory))
+            {
+                Directory.Delete(_temporaryDirectory, recursive: true);
+            }
         }
+    }
+
+    private sealed class TestWebHostEnvironment : IWebHostEnvironment
+    {
+        public TestWebHostEnvironment(string contentRootPath, string webRootPath)
+        {
+            ContentRootPath = contentRootPath;
+            WebRootPath = webRootPath;
+        }
+
+        public string ApplicationName { get; set; } = "BookPicker.Tests";
+        public IFileProvider ContentRootFileProvider { get; set; } = new NullFileProvider();
+        public string ContentRootPath { get; set; }
+        public string EnvironmentName { get; set; } = "Testing";
+        public IFileProvider WebRootFileProvider { get; set; } = new NullFileProvider();
+        public string WebRootPath { get; set; }
     }
 }

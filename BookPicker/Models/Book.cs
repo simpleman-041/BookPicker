@@ -99,6 +99,14 @@
             UpdateReadingStatus();
         }
 
+        /// <summary>
+        /// 表紙画像の参照先だけを更新する。
+        /// </summary>
+        public void UpdateCoverImagePath(string? coverImagePath)
+        {
+            CoverImagePath = NormalizeCoverImagePath(coverImagePath);
+        }
+
         private void UpdateLastReadAtIfProgressed(int previousCurrentPage)
         {
             if (CurrentPage > previousCurrentPage)

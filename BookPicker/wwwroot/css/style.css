@@ -668,6 +668,10 @@ select:focus-visible {
     gap: 0.5rem;
 }
 
+.detail-book__create-cover .detail-book__cover-upload {
+    width: min(100%, 8rem);
+}
+
 .detail-book--creating .detail-book__select:invalid {
     color: var(--color-muted);
 }
@@ -818,6 +822,7 @@ select:focus-visible {
 
 .detail-book__cover {
     aspect-ratio: 3 / 4;
+    position: relative;
     margin: 0;
     overflow: hidden;
     background: #e1e2df;
@@ -825,11 +830,102 @@ select:focus-visible {
     box-shadow: 0 0.35rem 1rem rgba(31, 42, 35, 0.12);
 }
 
+.detail-book__cover-upload {
+    min-width: 0;
+    display: grid;
+    gap: 0.55rem;
+}
+
+.detail-book__cover-button {
+    width: 100%;
+    height: 100%;
+    position: relative;
+    display: block;
+    padding: 0;
+    overflow: hidden;
+    background: transparent;
+    border: 0;
+}
+
+.detail-book__cover-button:not(:disabled) {
+    cursor: pointer;
+}
+
+.detail-book__cover-button:focus-visible {
+    outline: 3px solid rgba(57, 94, 70, 0.55);
+    outline-offset: -3px;
+}
+
+.detail-book__cover-label {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    padding: 0.42rem 0.35rem;
+    color: #ffffff;
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-align: center;
+    background: rgba(24, 35, 28, 0.74);
+    opacity: 0;
+    transform: translateY(0.25rem);
+    transition: opacity 120ms ease, transform 120ms ease;
+}
+
+.detail-book__cover-pending {
+    position: absolute;
+    top: 0.45rem;
+    right: 0.45rem;
+    padding: 0.22rem 0.42rem;
+    color: var(--color-accent-dark);
+    font-size: 0.7rem;
+    font-weight: 700;
+    background: rgba(255, 255, 255, 0.92);
+    border-radius: 999px;
+}
+
+.detail-book__cover-button:hover:not(:disabled) .detail-book__cover-label,
+.detail-book__cover-button:focus-visible .detail-book__cover-label {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.detail-book__cover-button:disabled {
+    cursor: wait;
+    opacity: 0.72;
+}
+
 .detail-book__cover img {
     width: 100%;
     height: 100%;
     display: block;
     object-fit: cover;
+}
+
+.detail-book__cover-error,
+.detail-book__cover-status {
+    padding: 0.55rem 0.6rem;
+    margin: 0;
+    font-size: 0.75rem;
+    line-height: 1.45;
+    border-radius: 0.45rem;
+}
+
+.detail-book__cover-error {
+    color: #7c2929;
+    background: var(--color-danger-soft);
+    border: 1px solid #d9aaa5;
+}
+
+.detail-book__cover-status {
+    color: var(--color-accent-dark);
+    background: var(--color-accent-soft);
+    border: 1px solid #b9cbbf;
+}
+
+.detail-book__cover-error[hidden],
+.detail-book__cover-status[hidden] {
+    display: none;
 }
 
 .detail-book__metadata {

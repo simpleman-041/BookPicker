@@ -2,6 +2,8 @@
 using BookPicker.Models;
 using BookPicker.Requests;
 using BookPicker.Services;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -13,10 +15,25 @@ namespace BookPicker.Controllers
     {
         // コンストラクタで受け取った BookPickerDbContext をプライベートフィールドに格納しておく
         private readonly BookPickerDbContext _dbContext;
+        private readonly string _webRootPath;
+        private const long MaximumCoverFileSize = 5 * 1024 * 1024;
+        private const string CoverUrlPrefix = "/uploads/covers/";
+        private static readonly IReadOnlyDictionary<string, string> AllowedCoverContentTypes =
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                [".jpg"] = "image/jpeg",
+                [".jpeg"] = "image/jpeg",
+                [".png"] = "image/png",
+                [".webp"] = "image/webp"
+            };
 
-        public BooksController(BookPickerDbContext dbContext)
+        public BooksController(BookPickerDbContext dbContext, IWebHostEnvironment webHostEnvironment)
         {
             _dbContext = dbContext;
+            _webRootPath = Path.GetFullPath(
+                string.IsNullOrWhiteSpace(webHostEnvironment.WebRootPath)
+                    ? Path.Combine(webHostEnvironment.ContentRootPath, "wwwroot")
+                    : webHostEnvironment.WebRootPath);
         }
 
         [HttpGet("{id}")]
@@ -93,6 +110,81 @@ namespace BookPicker.Controllers
 
             await _dbContext.SaveChangesAsync();
             return NoContent();
+        }
+
+        [HttpPost("{id}/cover")]
+        [Consumes("multipart/form-data")]
+        public async Task<IActionResult> UploadCover(
+            int id,
+            [FromForm] IFormFile? file,
+            CancellationToken cancellationToken = default)
+        {
+            var book = await _dbContext.Books.FindAsync([id], cancellationToken);
+            if (book == null)
+            {
+                return NotFound();
+            }
+
+            var validationError = ValidateCoverFile(file);
+            if (validationError != null)
+            {
+                return BadRequest(validationError);
+            }
+
+            var extension = Path.GetExtension(file!.FileName).ToLowerInvariant();
+            var generatedFileName = $"{Guid.NewGuid():N}{extension}";
+            var coversDirectoryPath = GetCoversDirectoryPath();
+            var newPhysicalPath = Path.Combine(coversDirectoryPath, generatedFileName);
+            var newCoverImagePath = $"{CoverUrlPrefix}{generatedFileName}";
+            var previousCoverImagePath = book.CoverImagePath;
+            var newFileCreated = false;
+
+            try
+            {
+                Directory.CreateDirectory(coversDirectoryPath);
+
+                await using (var destination = new FileStream(
+                    newPhysicalPath,
+                    FileMode.CreateNew,
+                    FileAccess.Write,
+                    FileShare.None,
+                    bufferSize: 81920,
+                    useAsync: true))
+                {
+                    newFileCreated = true;
+                    await file.CopyToAsync(destination, cancellationToken);
+                }
+
+                book.UpdateCoverImagePath(newCoverImagePath);
+
+                try
+                {
+                    await _dbContext.SaveChangesAsync(cancellationToken);
+                }
+                catch
+                {
+                    book.UpdateCoverImagePath(previousCoverImagePath);
+                    throw;
+                }
+            }
+            catch
+            {
+                if (newFileCreated)
+                {
+                    TryDeleteFile(newPhysicalPath);
+                }
+
+                throw;
+            }
+
+            var previousPhysicalPath = GetManagedCoverPhysicalPath(previousCoverImagePath);
+            if (previousPhysicalPath != null
+                && !string.Equals(previousPhysicalPath, newPhysicalPath, StringComparison.OrdinalIgnoreCase))
+            {
+                TryDeleteFile(previousPhysicalPath);
+            }
+
+            return Ok(book);
         }
 
         [HttpPut("{id}/completion")]
@@ -181,6 +273,90 @@ namespace BookPicker.Controllers
             catch (ArgumentException ex)
             {
                 return BadRequest(ex.Message);
+            }
+        }
+
+        private static string? ValidateCoverFile(IFormFile? file)
+        {
+            if (file == null || file.Length == 0)
+            {
+                return "画像ファイルを選択してください。";
+            }
+
+            if (file.Length > MaximumCoverFileSize)
+            {
+                return "画像は5MB以下にしてください。";
+            }
+
+            var extension = Path.GetExtension(file.FileName);
+            if (!AllowedCoverContentTypes.TryGetValue(extension, out var expectedContentType))
+            {
+                return "対応していない画像形式です。.jpg、.jpeg、.png、.webp のいずれかを選択してください。";
+            }
+
+            if (!string.Equals(file.ContentType, expectedContentType, StringComparison.OrdinalIgnoreCase))
+            {
+                return "画像のContent-Typeがファイル形式と一致しません。";
+            }
+
+            return null;
+        }
+
+        private string GetCoversDirectoryPath()
+        {
+            return Path.GetFullPath(Path.Combine(_webRootPath, "uploads", "covers"));
+        }
+
+        private string? GetManagedCoverPhysicalPath(string? coverImagePath)
+        {
+            if (string.IsNullOrWhiteSpace(coverImagePath)
+                || !coverImagePath.StartsWith(CoverUrlPrefix, StringComparison.Ordinal))
+            {
+                return null;
+            }
+
+            var fileName = coverImagePath[CoverUrlPrefix.Length..];
+            if (string.IsNullOrWhiteSpace(fileName)
+                || !string.Equals(fileName, Path.GetFileName(fileName), StringComparison.Ordinal))
+            {
+                return null;
+            }
+
+            var extension = Path.GetExtension(fileName);
+            var generatedName = Path.GetFileNameWithoutExtension(fileName);
+            if (!AllowedCoverContentTypes.ContainsKey(extension)
+                || !Guid.TryParseExact(generatedName, "N", out _))
+            {
+                return null;
+            }
+
+            var coversDirectoryPath = GetCoversDirectoryPath();
+            var candidatePath = Path.GetFullPath(Path.Combine(coversDirectoryPath, fileName));
+            var directoryPrefix = coversDirectoryPath.TrimEnd(
+                Path.DirectorySeparatorChar,
+                Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
+
+            return candidatePath.StartsWith(directoryPrefix, StringComparison.OrdinalIgnoreCase)
+                ? candidatePath
+                : null;
+        }
+
+        private static void TryDeleteFile(string path)
+        {
+            try
+            {
+                if (System.IO.File.Exists(path))
+                {
+                    System.IO.File.Delete(path);
+                }
+            }
+            catch (IOException)
+            {
+                // DB更新済みのため、古い表紙の削除失敗でアップロード結果を失敗扱いにしない。
+            }
+            catch (UnauthorizedAccessException)
+            {
+                // DB更新済みのため、古い表紙の削除失敗でアップロード結果を失敗扱いにしない。
             }
         }
     }
