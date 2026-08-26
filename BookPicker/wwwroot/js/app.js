@@ -64,6 +64,7 @@ const titleMatchModeInputs = document.querySelectorAll('input[name="titleMatchMo
 const interestLevelFilter = document.getElementById("interest-level");
 const genreFilter = document.getElementById("genre");
 const readingStatusFilter = document.getElementById("reading-status");
+const detailedFilterResetButton = document.getElementById("detailed-filter-reset");
 const quickFilterButtons = document.querySelectorAll("[data-quick-filter]");
 const workspace = document.querySelector(".workspace");
 const addBookButton = document.getElementById("add-book-button");
@@ -296,6 +297,20 @@ function createDetailedFilterQueryState(changedFilter) {
     };
 }
 
+function createDetailedFilterResetQueryState() {
+    const nearlyFinishedIsSelected = bookListQueryState.quickFilter === "nearly-finished";
+
+    return {
+        ...bookListQueryState,
+        interestLevel: "",
+        genre: "",
+        detailReadingStatus: "",
+        readingStatus: nearlyFinishedIsSelected
+            ? READING_STATUS_QUERY_VALUES.lateStage
+            : ""
+    };
+}
+
 function createQuickFilterQueryState(quickFilter) {
     const quickFilterDefinition = QUICK_FILTERS[quickFilter] ?? QUICK_FILTERS.all;
     const nearlyFinishedWasSelected = bookListQueryState.quickFilter === "nearly-finished";
@@ -327,7 +342,16 @@ function syncTitleSearchControls(queryState) {
 function syncDetailedFilterControls(queryState) {
     interestLevelFilter.value = queryState.interestLevel;
     genreFilter.value = queryState.genre;
-    readingStatusFilter.value = queryState.readingStatus;
+    readingStatusFilter.value = queryState.quickFilter === "nearly-finished"
+        ? queryState.detailReadingStatus
+        : queryState.readingStatus;
+    updateDetailedFilterResetButtonState();
+}
+
+function updateDetailedFilterResetButtonState() {
+    detailedFilterResetButton.disabled = interestLevelFilter.value === ""
+        && genreFilter.value === ""
+        && readingStatusFilter.value === "";
 }
 
 function syncQuickFilterControls(queryState) {
@@ -386,7 +410,18 @@ async function searchBooksByTitle() {
 async function searchBooksByDetailedFilters(changedFilter) {
     const nextQueryState = createDetailedFilterQueryState(changedFilter);
 
-    syncQuickFilterControls(nextQueryState);
+    syncBookListQueryControls(nextQueryState);
+    await applyBookListQueryState(
+        nextQueryState,
+        "本の一覧を取得できませんでした。時間をおいて再度お試しください。",
+        "絞り込み結果から編集中の本が外れます。未保存の変更を破棄して絞り込みますか？"
+    );
+}
+
+async function resetDetailedFilters() {
+    const nextQueryState = createDetailedFilterResetQueryState();
+
+    syncDetailedFilterControls(nextQueryState);
     await applyBookListQueryState(
         nextQueryState,
         "本の一覧を取得できませんでした。時間をおいて再度お試しください。",
@@ -2426,6 +2461,7 @@ function updateResultCount(count) {
 populateDetailedFilterOptions(interestLevelFilter, INTEREST_LEVEL_LABELS);
 populateDetailedFilterOptions(genreFilter, GENRE_LABELS);
 populateDetailedFilterOptions(readingStatusFilter, READING_STATUS_LABELS);
+updateDetailedFilterResetButtonState();
 
 titleSearchForm.addEventListener("submit", (event) => {
     event.preventDefault();
@@ -2437,6 +2473,10 @@ for (const filter of [interestLevelFilter, genreFilter, readingStatusFilter]) {
         searchBooksByDetailedFilters(filter);
     });
 }
+
+detailedFilterResetButton.addEventListener("click", () => {
+    resetDetailedFilters();
+});
 
 for (const quickFilterButton of quickFilterButtons) {
     quickFilterButton.addEventListener("click", () => {

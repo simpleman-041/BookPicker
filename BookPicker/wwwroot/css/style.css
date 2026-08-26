@@ -280,6 +280,13 @@ select:focus-visible {
     margin-bottom: 2rem;
 }
 
+.filter-sidebar__title-row {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 0.65rem;
+}
+
 .filter-sidebar__eyebrow,
 .section-heading__eyebrow {
     margin: 0 0 0.25rem;
@@ -293,6 +300,28 @@ select:focus-visible {
 .section-heading h2 {
     margin: 0;
     font-size: 1.25rem;
+}
+
+.filter-sidebar__reset {
+    padding: 0.25rem 0.55rem;
+    color: var(--color-muted);
+    font-size: 0.75rem;
+    font-weight: 700;
+    background: var(--color-surface);
+    border: 1px solid #9bb4a5;
+    border-radius: 0.45rem;
+}
+
+.filter-sidebar__reset:hover:not(:disabled) {
+    color: var(--color-accent-dark);
+    background: var(--color-accent-soft);
+}
+
+.filter-sidebar__reset:disabled {
+    cursor: not-allowed;
+    color: #9ba39d;
+    background: #f1f3f0;
+    border-color: #d4d9d3;
 }
 
 .filter-field + .filter-field {
