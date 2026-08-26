@@ -11,18 +11,19 @@
         <div class="app-header__brand" aria-label="Yondoku ホーム">Yondoku</div>
 
         <div class="search-controls">
-            <div class="title-search" role="search" aria-label="タイトル検索">
+            <form id="title-search-form" class="title-search" role="search" aria-label="タイトル検索">
                 <label class="visually-hidden" for="title-search">タイトル</label>
                 <input
                     id="title-search"
                     name="searchTitle"
                     type="search"
                     placeholder="タイトル検索"
-                    autocomplete="off" />
-                <button id="title-search-button" class="icon-button" type="button" aria-label="タイトルを検索">
+                    autocomplete="off"
+                    maxlength="100" />
+                <button id="title-search-button" class="icon-button" type="submit" aria-label="タイトルを検索">
                     <span aria-hidden="true"></span>
                 </button>
-            </div>
+            </form>
 
             <fieldset class="match-mode" aria-label="タイトルの一致方法">
                 <legend class="visually-hidden">タイトルの一致方法</legend>
@@ -37,7 +38,13 @@
             </fieldset>
         </div>
 
-        <button id="add-book-button" class="primary-button" type="button">＋ 本を追加</button>
+        <button
+            id="add-book-button"
+            class="primary-button"
+            type="button"
+            aria-controls="book-detail-panel">
+            ＋ 本を追加
+        </button>
     </header>
 
     <nav class="quick-filters" aria-label="クイック条件">

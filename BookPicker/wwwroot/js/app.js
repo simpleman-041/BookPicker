@@ -2,8 +2,7 @@
     try {
         const books = await fetchBooks();
 
-        renderBooks(books);
-        updateResultCount(books.length);
+        updateBookList(books);
     } catch (error) {
         console.error("本の一覧を取得できませんでした。", error);
         showListMessage("本の一覧を取得できませんでした。時間をおいて再度お試しください。", "error");
@@ -13,12 +12,22 @@
 
 const BOOKS_API_URL = "/api/books";
 const DEFAULT_COVER_IMAGE_PATH = "/images/default-book-cover.png";
+const TITLE_MATCH_MODE_QUERY_VALUES = {
+    partial: "Partial",
+    exact: "Exact"
+};
 
 const bookList = document.getElementById("book-list");
 const bookCardTemplate = document.getElementById("book-card-template");
 const bookResultCount = document.getElementById("book-result-count");
+const titleSearchForm = document.getElementById("title-search-form");
+const titleSearchInput = document.getElementById("title-search");
+const titleSearchButton = document.getElementById("title-search-button");
+const titleMatchModeInputs = document.querySelectorAll('input[name="titleMatchMode"]');
 const workspace = document.querySelector(".workspace");
+const addBookButton = document.getElementById("add-book-button");
 const bookDetailPanel = document.getElementById("book-detail-panel");
+const bookDetailHeading = document.getElementById("detail-panel-heading");
 const bookDetailContent = document.getElementById("book-detail-content");
 const bookDetailCloseButton = document.getElementById("book-detail-close");
 const bookDetailEditButton = document.getElementById("book-detail-edit");
@@ -108,11 +117,19 @@ let currentBookDetail = null;
 let editingBookId = null;
 let editBookSnapshot = null;
 let isSavingBook = false;
+let isCreatingBook = false;
+let isRegisteringBook = false;
+let createBookReturnState = null;
 let isUpdatingCompletion = false;
 let completionUpdateTarget = null;
 let isUpdatingProgress = false;
 let isDeletingBook = false;
 let deleteDialogReturnFocus = null;
+let isSearchingBooks = false;
+let bookListQueryState = {
+    searchTitle: "",
+    titleMatchMode: TITLE_MATCH_MODE_QUERY_VALUES.partial
+};
 
 function getBookApiUrl(bookId) {
     return `${BOOKS_API_URL}/${encodeURIComponent(bookId)}`;
@@ -126,11 +143,25 @@ function getBookProgressApiUrl(bookId) {
     return `${getBookApiUrl(bookId)}/progress`;
 }
 
-async function fetchBooks() {
-    const response = await fetch(BOOKS_API_URL);
+function buildBooksApiUrl(queryState = bookListQueryState) {
+    const queryParameters = new URLSearchParams();
+
+    if (queryState.searchTitle !== "") {
+        queryParameters.set("SearchTitle", queryState.searchTitle);
+        queryParameters.set("TitleMatchMode", queryState.titleMatchMode);
+    }
+
+    const queryString = queryParameters.toString();
+
+    return queryString === "" ? BOOKS_API_URL : `${BOOKS_API_URL}?${queryString}`;
+}
+
+async function fetchBooks(queryState = bookListQueryState) {
+    const booksApiUrl = buildBooksApiUrl(queryState);
+    const response = await fetch(booksApiUrl);
 
     if (!response.ok) {
-        const error = new Error(`GET ${BOOKS_API_URL} failed: ${response.status}`);
+        const error = new Error(`GET ${booksApiUrl} failed: ${response.status}`);
         error.status = response.status;
         throw error;
     }
@@ -138,10 +169,103 @@ async function fetchBooks() {
     const books = await response.json();
 
     if (!Array.isArray(books)) {
-        throw new Error(`GET ${BOOKS_API_URL} returned an invalid response.`);
+        throw new Error(`GET ${booksApiUrl} returned an invalid response.`);
     }
 
     return books;
+}
+
+function getSelectedTitleMatchMode() {
+    const selectedInput = Array.from(titleMatchModeInputs)
+        .find((input) => input.checked);
+
+    return TITLE_MATCH_MODE_QUERY_VALUES[selectedInput?.value]
+        ?? TITLE_MATCH_MODE_QUERY_VALUES.partial;
+}
+
+function createTitleSearchQueryState() {
+    const searchTitle = titleSearchInput.value.trim();
+
+    titleSearchInput.value = searchTitle;
+
+    return {
+        searchTitle,
+        titleMatchMode: getSelectedTitleMatchMode()
+    };
+}
+
+function syncTitleSearchControls(queryState) {
+    titleSearchInput.value = queryState.searchTitle;
+
+    const inputValue = queryState.titleMatchMode === TITLE_MATCH_MODE_QUERY_VALUES.exact
+        ? "exact"
+        : "partial";
+
+    for (const input of titleMatchModeInputs) {
+        input.checked = input.value === inputValue;
+    }
+}
+
+function setTitleSearchingState(isSearching) {
+    isSearchingBooks = isSearching;
+    titleSearchForm.setAttribute("aria-busy", String(isSearching));
+    titleSearchButton.disabled = isSearching;
+    titleSearchButton.setAttribute(
+        "aria-label",
+        isSearching ? "タイトルを検索中" : "タイトルを検索"
+    );
+}
+
+function containsBookId(books, bookId) {
+    const normalizedBookId = String(bookId);
+
+    return books.some((book) => String(book.id) === normalizedBookId);
+}
+
+async function searchBooksByTitle() {
+    if (isSearchingBooks) {
+        return;
+    }
+
+    const previousQueryState = { ...bookListQueryState };
+    const nextQueryState = createTitleSearchQueryState();
+
+    bookListQueryState = nextQueryState;
+    setTitleSearchingState(true);
+
+    try {
+        const books = await fetchBooks(nextQueryState);
+        const selectedBookIsExcluded = selectedBookId !== null
+            && !containsBookId(books, selectedBookId);
+
+        if (selectedBookIsExcluded
+            && !isCreatingBook
+            && !confirmDiscardUnsavedPanelChanges(
+                "検索結果から編集中の本が外れます。未保存の変更を破棄して検索しますか？"
+            )) {
+            bookListQueryState = previousQueryState;
+            syncTitleSearchControls(previousQueryState);
+            return;
+        }
+
+        updateBookList(books);
+
+        if (selectedBookIsExcluded && isCreatingBook) {
+            createBookReturnState = null;
+            setSelectedBook(null);
+        } else if (selectedBookIsExcluded) {
+            closeBookDetailPanel();
+        }
+    } catch (error) {
+        console.error("タイトル検索に失敗しました。", error);
+        showListMessage(
+            "タイトル検索に失敗しました。時間をおいて再度お試しください。",
+            "error"
+        );
+        updateResultCount(null);
+    } finally {
+        setTitleSearchingState(false);
+    }
 }
 
 function getCoverImagePath(coverImagePath) {
@@ -249,7 +373,11 @@ function createMetadataItem(label, value, valueClassName = "") {
 }
 
 function isDetailUpdateInProgress() {
-    return isSavingBook || isUpdatingCompletion || isUpdatingProgress || isDeletingBook;
+    return isSavingBook
+        || isRegisteringBook
+        || isUpdatingCompletion
+        || isUpdatingProgress
+        || isDeletingBook;
 }
 
 function createBookProgressSection(book) {
@@ -431,7 +559,14 @@ function createBookDetail(book) {
     return article;
 }
 
-function createEnumSelect(id, name, numericLabels, nameLabels, currentValue) {
+function createEnumSelect(
+    id,
+    name,
+    numericLabels,
+    nameLabels,
+    currentValue,
+    placeholderText = ""
+) {
     const select = document.createElement("select");
     const selectedValue = getEnumNumericValue(currentValue, numericLabels, nameLabels);
 
@@ -439,6 +574,16 @@ function createEnumSelect(id, name, numericLabels, nameLabels, currentValue) {
     select.name = name;
     select.className = "detail-book__select";
     select.required = true;
+
+    if (placeholderText !== "") {
+        const placeholder = document.createElement("option");
+
+        placeholder.value = "";
+        placeholder.textContent = placeholderText;
+        placeholder.disabled = true;
+        placeholder.selected = selectedValue === null;
+        select.appendChild(placeholder);
+    }
 
     for (const [value, label] of Object.entries(numericLabels)) {
         const option = document.createElement("option");
@@ -662,13 +807,108 @@ function createBookEditForm(book) {
     return form;
 }
 
+function createBookFormField(labelText, control, helpText = "") {
+    const field = document.createElement("div");
+    const label = createTextElement("label", "detail-book__field-label", labelText);
+
+    field.className = "detail-book__field";
+    label.htmlFor = control.id;
+    field.append(label, control);
+
+    if (helpText !== "") {
+        const help = createTextElement("p", "detail-book__field-help", helpText);
+
+        help.id = `${control.id}-help`;
+        control.setAttribute("aria-describedby", help.id);
+        field.appendChild(help);
+    }
+
+    return field;
+}
+
+function createBookCreationForm() {
+    const form = document.createElement("form");
+    const introduction = createTextElement(
+        "p",
+        "detail-book__create-introduction",
+        "各項目を入力・選択して、「登録」を押してください。"
+    );
+    const fields = document.createElement("div");
+    const titleInput = document.createElement("input");
+    const totalPagesInput = document.createElement("input");
+    const genreSelect = createEnumSelect(
+        "book-create-genre",
+        "genre",
+        GENRE_LABELS,
+        GENRE_NAME_LABELS,
+        null,
+        "ジャンルを選択してください"
+    );
+    const interestLevelSelect = createEnumSelect(
+        "book-create-interest-level",
+        "interestLevel",
+        INTEREST_LEVEL_LABELS,
+        INTEREST_LEVEL_NAME_LABELS,
+        null,
+        "興味レベルを選択してください"
+    );
+    const errorMessage = createTextElement("p", "detail-book__edit-error", "");
+    const registeringStatus = createTextElement(
+        "p",
+        "detail-book__saving-status",
+        "本を登録しています…"
+    );
+
+    form.id = "book-create-form";
+    form.className = "detail-book detail-book--creating";
+    form.setAttribute("aria-describedby", "book-create-introduction");
+    form.addEventListener("submit", registerBook);
+
+    introduction.id = "book-create-introduction";
+    fields.className = "detail-book__create-fields";
+
+    titleInput.id = "book-create-title";
+    titleInput.name = "title";
+    titleInput.className = "detail-book__input";
+    titleInput.type = "text";
+    titleInput.autocomplete = "off";
+    titleInput.required = true;
+    titleInput.maxLength = 100;
+
+    totalPagesInput.id = "book-create-total-pages";
+    totalPagesInput.name = "totalPages";
+    totalPagesInput.className = "detail-book__input";
+    totalPagesInput.type = "number";
+    totalPagesInput.min = "1";
+    totalPagesInput.max = "10000";
+    totalPagesInput.step = "1";
+    totalPagesInput.required = true;
+
+    fields.append(
+        createBookFormField("タイトル", titleInput, "100文字以内で入力してください。"),
+        createBookFormField("総ページ数", totalPagesInput, "1〜10000ページで入力してください。"),
+        createBookFormField("ジャンル", genreSelect),
+        createBookFormField("興味レベル", interestLevelSelect)
+    );
+
+    errorMessage.id = "book-create-error";
+    errorMessage.setAttribute("role", "alert");
+    errorMessage.hidden = true;
+    registeringStatus.id = "book-registering-status";
+    registeringStatus.setAttribute("role", "status");
+    registeringStatus.hidden = true;
+
+    form.append(introduction, fields, errorMessage, registeringStatus);
+    return form;
+}
+
 function openBookDetailPanel() {
     bookDetailPanel.hidden = false;
     workspace.classList.add("workspace--detail-open");
 }
 
 function setDetailActionsUnavailable() {
-    bookDetailPanel.classList.remove("detail-panel--editing");
+    bookDetailPanel.classList.remove("detail-panel--editing", "detail-panel--creating");
     bookDetailEditButton.textContent = "編集";
     bookDetailEditButton.classList.remove("detail-panel__edit--save");
     bookDetailEditButton.disabled = true;
@@ -678,7 +918,8 @@ function setDetailActionsUnavailable() {
 }
 
 function setDetailActionsForView() {
-    bookDetailPanel.classList.remove("detail-panel--editing");
+    bookDetailHeading.textContent = "本の詳細";
+    bookDetailPanel.classList.remove("detail-panel--editing", "detail-panel--creating");
     bookDetailEditButton.textContent = "編集";
     bookDetailEditButton.classList.remove("detail-panel__edit--save");
     bookDetailEditButton.disabled = currentBookDetail === null || isDetailUpdateInProgress();
@@ -688,8 +929,22 @@ function setDetailActionsForView() {
 }
 
 function setDetailActionsForEdit() {
+    bookDetailHeading.textContent = "本の詳細";
     bookDetailPanel.classList.add("detail-panel--editing");
+    bookDetailPanel.classList.remove("detail-panel--creating");
     bookDetailEditButton.textContent = "保存";
+    bookDetailEditButton.classList.add("detail-panel__edit--save");
+    bookDetailEditButton.disabled = false;
+    bookDetailCancelButton.hidden = false;
+    bookDetailCancelButton.disabled = false;
+    bookDetailCloseButton.disabled = false;
+}
+
+function setDetailActionsForCreate() {
+    bookDetailHeading.textContent = "本を追加";
+    bookDetailPanel.classList.remove("detail-panel--editing");
+    bookDetailPanel.classList.add("detail-panel--creating");
+    bookDetailEditButton.textContent = "登録";
     bookDetailEditButton.classList.add("detail-panel__edit--save");
     bookDetailEditButton.disabled = false;
     bookDetailCancelButton.hidden = false;
@@ -701,6 +956,14 @@ function clearEditingState() {
     editingBookId = null;
     editBookSnapshot = null;
     isSavingBook = false;
+    bookDetailPanel.setAttribute("aria-busy", "false");
+}
+
+function clearCreatingState() {
+    isCreatingBook = false;
+    isRegisteringBook = false;
+    createBookReturnState = null;
+    addBookButton.disabled = false;
     bookDetailPanel.setAttribute("aria-busy", "false");
 }
 
@@ -727,7 +990,7 @@ function renderBookDetail(book) {
 }
 
 function startBookEditing() {
-    if (currentBookDetail === null || isDetailUpdateInProgress()) {
+    if (currentBookDetail === null || isCreatingBook || isDetailUpdateInProgress()) {
         return;
     }
 
@@ -748,6 +1011,72 @@ function cancelBookEditing() {
     clearEditingState();
     renderBookDetail(bookBeforeEditing);
     bookDetailEditButton.focus();
+}
+
+function startBookCreation() {
+    const returnBookId = selectedBookId;
+    const returnBook = currentBookDetail === null ? null : { ...currentBookDetail };
+
+    if (bookDetailAbortController !== null) {
+        bookDetailAbortController.abort();
+        bookDetailAbortController = null;
+    }
+
+    clearEditingState();
+    createBookReturnState = returnBookId === null
+        ? null
+        : { bookId: returnBookId, book: returnBook };
+    currentBookDetail = null;
+    isCreatingBook = true;
+    bookDetailContent.replaceChildren(createBookCreationForm());
+    openBookDetailPanel();
+    setDetailActionsForCreate();
+    document.getElementById("book-create-title")?.focus();
+}
+
+function requestStartBookCreation() {
+    if (isDetailUpdateInProgress()) {
+        return;
+    }
+
+    if (isCreatingBook) {
+        document.getElementById("book-create-title")?.focus();
+        return;
+    }
+
+    if (!confirmDiscardUnsavedPanelChanges(
+        "編集中の変更内容は保存されません。本の新規登録へ移りますか？"
+    )) {
+        return;
+    }
+
+    startBookCreation();
+}
+
+function cancelBookCreation() {
+    if (!isCreatingBook || isRegisteringBook) {
+        return;
+    }
+
+    const returnState = createBookReturnState;
+
+    document.getElementById("book-create-form")?.reset();
+    clearCreatingState();
+
+    if (returnState?.book !== null && returnState?.book !== undefined) {
+        setSelectedBook(returnState.bookId);
+        renderBookDetail(returnState.book);
+        bookDetailEditButton.focus();
+        return;
+    }
+
+    if (returnState?.bookId !== undefined) {
+        showBookDetail(returnState.bookId);
+        return;
+    }
+
+    closeBookDetailPanel();
+    addBookButton.focus();
 }
 
 function hasGeneralBookEdits(form, book) {
@@ -784,6 +1113,27 @@ function hasUnsavedBookEdits() {
         || getSelectedCompletionState(form) !== Boolean(editBookSnapshot.isCompleted);
 }
 
+function hasUnsavedBookCreationInput() {
+    const form = document.getElementById("book-create-form");
+
+    if (!isCreatingBook || form === null) {
+        return false;
+    }
+
+    return form.elements.title.value !== ""
+        || form.elements.totalPages.value !== ""
+        || form.elements.genre.value !== ""
+        || form.elements.interestLevel.value !== "";
+}
+
+function hasUnsavedPanelChanges() {
+    return hasUnsavedBookEdits() || hasUnsavedBookCreationInput();
+}
+
+function confirmDiscardUnsavedPanelChanges(message) {
+    return !hasUnsavedPanelChanges() || window.confirm(message);
+}
+
 function setSelectedBook(bookId) {
     selectedBookId = bookId === null ? null : String(bookId);
 
@@ -814,6 +1164,7 @@ function closeBookDetailPanel(restoreCardFocus = false) {
     workspace.classList.remove("workspace--detail-open");
     currentBookDetail = null;
     clearEditingState();
+    clearCreatingState();
     setDetailActionsUnavailable();
     setSelectedBook(null);
 
@@ -827,8 +1178,11 @@ function requestCloseBookDetailPanel(restoreCardFocus = false) {
         return;
     }
 
-    if (hasUnsavedBookEdits()
-        && !window.confirm("編集中の変更内容は保存されません。詳細パネルを閉じますか？")) {
+    const discardMessage = isCreatingBook
+        ? "入力中の内容は登録されません。詳細パネルを閉じますか？"
+        : "編集中の変更内容は保存されません。詳細パネルを閉じますか？";
+
+    if (!confirmDiscardUnsavedPanelChanges(discardMessage)) {
         return;
     }
 
@@ -843,11 +1197,15 @@ function requestBookSelection(bookId) {
         return;
     }
 
-    if (hasUnsavedBookEdits()
-        && !window.confirm("編集中の変更内容は保存されません。別の本を表示しますか？")) {
+    const discardMessage = isCreatingBook
+        ? "入力中の内容は登録されません。選択した本を表示しますか？"
+        : "編集中の変更内容は保存されません。別の本を表示しますか？";
+
+    if (!confirmDiscardUnsavedPanelChanges(discardMessage)) {
         return;
     }
 
+    clearCreatingState();
     clearEditingState();
     showBookDetail(normalizedBookId);
 }
@@ -882,6 +1240,7 @@ async function showBookDetail(bookId) {
 
     bookDetailAbortController = requestController;
     currentBookDetail = null;
+    bookDetailHeading.textContent = "本の詳細";
     setDetailActionsUnavailable();
     setSelectedBook(normalizedBookId);
     openBookDetailPanel();
@@ -891,13 +1250,15 @@ async function showBookDetail(bookId) {
     try {
         const book = await fetchBookDetail(normalizedBookId, requestController.signal);
 
-        if (selectedBookId !== normalizedBookId) {
+        if (isCreatingBook || selectedBookId !== normalizedBookId) {
             return;
         }
 
         renderBookDetail(book);
     } catch (error) {
-        if (error.name === "AbortError" || selectedBookId !== normalizedBookId) {
+        if (error.name === "AbortError"
+            || isCreatingBook
+            || selectedBookId !== normalizedBookId) {
             return;
         }
 
@@ -952,6 +1313,171 @@ async function readApiErrorMessage(response) {
     }
 
     return responseText;
+}
+
+function setBookCreateError(message) {
+    const errorMessage = document.getElementById("book-create-error");
+
+    if (errorMessage === null) {
+        return;
+    }
+
+    errorMessage.textContent = message;
+    errorMessage.hidden = message === "";
+}
+
+function setBookRegisteringState(isRegistering) {
+    const form = document.getElementById("book-create-form");
+    const registeringStatus = document.getElementById("book-registering-status");
+
+    isRegisteringBook = isRegistering;
+    bookDetailPanel.setAttribute("aria-busy", String(isRegistering));
+    bookDetailEditButton.textContent = isRegistering ? "登録中…" : "登録";
+    bookDetailEditButton.disabled = isRegistering;
+    bookDetailCancelButton.disabled = isRegistering;
+    bookDetailCloseButton.disabled = isRegistering;
+    addBookButton.disabled = isRegistering;
+
+    if (form !== null) {
+        for (const control of form.elements) {
+            control.disabled = isRegistering;
+        }
+    }
+
+    if (registeringStatus !== null) {
+        registeringStatus.hidden = !isRegistering;
+    }
+}
+
+function createBookPayload(form) {
+    return {
+        title: form.elements.title.value,
+        totalPages: form.elements.totalPages.valueAsNumber,
+        genre: Number(form.elements.genre.value),
+        interestLevel: Number(form.elements.interestLevel.value),
+        coverImagePath: null
+    };
+}
+
+async function createBook(createPayload) {
+    const response = await fetch(BOOKS_API_URL, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify(createPayload)
+    });
+
+    if (!response.ok) {
+        const error = new Error(`POST ${BOOKS_API_URL} failed: ${response.status}`);
+
+        error.status = response.status;
+        error.apiMessage = await readApiErrorMessage(response);
+        throw error;
+    }
+
+    let responseText = "";
+
+    try {
+        responseText = (await response.text()).trim();
+    } catch {
+        return null;
+    }
+
+    if (responseText === "") {
+        return null;
+    }
+
+    try {
+        const createdBook = JSON.parse(responseText);
+
+        return createdBook !== null && typeof createdBook === "object" && !Array.isArray(createdBook)
+            ? createdBook
+            : null;
+    } catch {
+        return null;
+    }
+}
+
+function getCreatedBookId(createdBook) {
+    const bookId = Number(createdBook?.id);
+
+    return Number.isInteger(bookId) && bookId > 0 ? String(bookId) : null;
+}
+
+function getCreateFailureMessage(error) {
+    if (error.status === 400) {
+        return error.apiMessage
+            ? `本を登録できませんでした。${error.apiMessage}`
+            : "本を登録できませんでした。入力内容を確認してください。";
+    }
+
+    if (error.status === 404) {
+        return "登録先が見つかりませんでした。ページを再読み込みして再度お試しください。";
+    }
+
+    return "本を登録できませんでした。入力内容は残っています。時間をおいて再度お試しください。";
+}
+
+async function registerBook(event) {
+    event.preventDefault();
+
+    const form = event.currentTarget;
+
+    if (!isCreatingBook || isRegisteringBook || !form.reportValidity()) {
+        return;
+    }
+
+    const createPayload = createBookPayload(form);
+    let bookWasCreated = false;
+
+    setBookCreateError("");
+    setBookRegisteringState(true);
+
+    try {
+        const createdBook = await createBook(createPayload);
+
+        bookWasCreated = true;
+
+        const createdBookId = getCreatedBookId(createdBook);
+        const books = await fetchBooks();
+        const createdBookIsVisible = createdBookId !== null
+            && containsBookId(books, createdBookId);
+
+        updateBookList(books);
+        form.reset();
+        setBookRegisteringState(false);
+        clearCreatingState();
+
+        if (createdBookIsVisible) {
+            await showBookDetail(createdBookId);
+            return;
+        }
+
+        closeBookDetailPanel();
+        addBookButton.focus();
+    } catch (error) {
+        console.error(
+            bookWasCreated
+                ? "本の登録後に一覧を再取得できませんでした。"
+                : "本を登録できませんでした。",
+            error
+        );
+        setBookRegisteringState(false);
+
+        if (bookWasCreated) {
+            closeBookDetailPanel();
+            showListMessage(
+                "本は登録されましたが、一覧の最新情報を取得できませんでした。ページを再読み込みしてください。",
+                "error"
+            );
+            updateResultCount(null);
+            addBookButton.focus();
+            return;
+        }
+
+        setBookCreateError(getCreateFailureMessage(error));
+    }
 }
 
 function setCompletionActionError(message) {
@@ -1091,8 +1617,7 @@ async function confirmBookDeletion() {
 
         const books = await fetchBooks();
 
-        renderBooks(books);
-        updateResultCount(books.length);
+        updateBookList(books);
         setBookDeletingState(false);
         closeBookDeleteDialog(false);
         closeBookDetailPanel();
@@ -1324,14 +1849,20 @@ async function refreshBookViews(bookId) {
         fetchBookDetail(bookId),
         fetchBooks()
     ]);
+    let bookIsVisible = true;
 
     if (listResult.status === "fulfilled") {
-        renderBooks(listResult.value);
-        updateResultCount(listResult.value.length);
-        setSelectedBook(bookId);
+        bookIsVisible = containsBookId(listResult.value, bookId);
+        updateBookList(listResult.value);
+
+        if (bookIsVisible) {
+            setSelectedBook(bookId);
+        } else {
+            closeBookDetailPanel();
+        }
     }
 
-    if (detailResult.status === "fulfilled") {
+    if (detailResult.status === "fulfilled" && bookIsVisible) {
         renderBookDetail(detailResult.value);
     }
 
@@ -1659,7 +2190,12 @@ function renderBooks(books) {
     const selectedBookIdBeforeRender = selectedBookId;
 
     if (books.length === 0) {
-        showListMessage("本がまだ登録されていません。", "empty");
+        showListMessage(
+            bookListQueryState.searchTitle === ""
+                ? "本がまだ登録されていません。"
+                : "該当する本がありません。",
+            "empty"
+        );
         return;
     }
 
@@ -1676,17 +2212,36 @@ function renderBooks(books) {
     }
 }
 
+function updateBookList(books) {
+    renderBooks(books);
+    updateResultCount(books.length);
+}
+
 function updateResultCount(count) {
     bookResultCount.textContent = count === null
         ? "表示件数: 取得失敗"
         : `表示件数: ${count}冊`;
 }
 
+titleSearchForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    searchBooksByTitle();
+});
+
+addBookButton.addEventListener("click", () => {
+    requestStartBookCreation();
+});
+
 bookDetailCloseButton.addEventListener("click", () => {
     requestCloseBookDetailPanel(true);
 });
 
 bookDetailEditButton.addEventListener("click", () => {
+    if (isCreatingBook) {
+        document.getElementById("book-create-form")?.requestSubmit();
+        return;
+    }
+
     if (editingBookId === null) {
         startBookEditing();
         return;
@@ -1696,6 +2251,11 @@ bookDetailEditButton.addEventListener("click", () => {
 });
 
 bookDetailCancelButton.addEventListener("click", () => {
+    if (isCreatingBook) {
+        cancelBookCreation();
+        return;
+    }
+
     cancelBookEditing();
 });
 
