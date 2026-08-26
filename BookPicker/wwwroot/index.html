@@ -10,41 +10,48 @@
     <header class="app-header">
         <div class="app-header__brand" aria-label="Yondoku ホーム">Yondoku</div>
 
-        <div class="title-search" role="search" aria-label="タイトル検索">
-            <label class="visually-hidden" for="title-search">タイトル</label>
-            <input
-                id="title-search"
-                name="searchTitle"
-                type="search"
-                placeholder="タイトル検索"
-                autocomplete="off" />
-            <button id="title-search-button" class="icon-button" type="button" aria-label="タイトルを検索">
-                <span aria-hidden="true"></span>
-            </button>
-        </div>
+        <div class="search-controls">
+            <div class="title-search" role="search" aria-label="タイトル検索">
+                <label class="visually-hidden" for="title-search">タイトル</label>
+                <input
+                    id="title-search"
+                    name="searchTitle"
+                    type="search"
+                    placeholder="タイトル検索"
+                    autocomplete="off" />
+                <button id="title-search-button" class="icon-button" type="button" aria-label="タイトルを検索">
+                    <span aria-hidden="true"></span>
+                </button>
+            </div>
 
-        <fieldset class="match-mode" aria-label="タイトルの一致方法">
-            <legend class="visually-hidden">タイトルの一致方法</legend>
-            <label>
-                <input type="radio" name="titleMatchMode" value="partial" checked />
-                <span>部分一致</span>
-            </label>
-            <label>
-                <input type="radio" name="titleMatchMode" value="exact" />
-                <span>完全一致</span>
-            </label>
-        </fieldset>
+            <fieldset class="match-mode" aria-label="タイトルの一致方法">
+                <legend class="visually-hidden">タイトルの一致方法</legend>
+                <label>
+                    <input type="radio" name="titleMatchMode" value="partial" checked />
+                    <span>部分一致</span>
+                </label>
+                <label>
+                    <input type="radio" name="titleMatchMode" value="exact" />
+                    <span>完全一致</span>
+                </label>
+            </fieldset>
+        </div>
 
         <button id="add-book-button" class="primary-button" type="button">＋ 本を追加</button>
     </header>
 
     <nav class="quick-filters" aria-label="クイック条件">
-        <button class="quick-filter is-active" type="button" data-quick-filter="all" aria-pressed="true">すべて</button>
-        <button class="quick-filter" type="button" data-quick-filter="interest" aria-pressed="false">興味のある順</button>
-        <button class="quick-filter" type="button" data-quick-filter="nearly-finished" aria-pressed="false">もう少しで読了</button>
-        <button class="quick-filter" type="button" data-quick-filter="long" aria-pressed="false">たっぷり読む</button>
-        <button class="quick-filter" type="button" data-quick-filter="short" aria-pressed="false">短めに読む</button>
-        <button class="quick-filter" type="button" data-quick-filter="recently-read" aria-pressed="false">最近読んだ</button>
+        <div class="quick-filters__options">
+            <button class="quick-filter is-active" type="button" data-quick-filter="all" aria-pressed="true">すべて</button>
+            <button class="quick-filter" type="button" data-quick-filter="interest" aria-pressed="false">興味のある順</button>
+            <button class="quick-filter" type="button" data-quick-filter="nearly-finished" aria-pressed="false">もう少しで読了</button>
+            <button class="quick-filter" type="button" data-quick-filter="long" aria-pressed="false">たっぷり読む</button>
+            <button class="quick-filter" type="button" data-quick-filter="short" aria-pressed="false">短めに読む</button>
+            <button class="quick-filter" type="button" data-quick-filter="recently-read" aria-pressed="false">最近読んだ</button>
+        </div>
+        <output id="book-result-count" class="quick-filters__result-count" aria-live="polite">
+            表示件数: 読み込み中
+        </output>
     </nav>
 
     <main class="workspace">

@@ -23,7 +23,7 @@
         /// </summary>
         public ReadingStatus ReadingStatus { get; private set; } = ReadingStatus.NotStarted;
         /// <summary>
-        /// 最後に実際に読み進めたUTC日時。
+        /// 最後に読み進めた、または明示的に読了にしたUTC日時。
         /// </summary>
         public DateTime?     LastReadAt     { get; private set; }
         /// <summary>
@@ -205,28 +205,22 @@
         }
 
         /// <summary>
-        /// 読了フラグを更新するメソッド。ユーザーの入力に応じてIsCompletedを更新する。
-        /// UI側でユーザーの入力に応じて呼び出されることを想定している。
+        /// 読了時は最終ページまで進めて読了日時を更新し、読了解除時は進捗と読了日時を維持する。
         /// </summary>
-        /// <param name="isFinishReading"></param>
         public void SetIsCompleted(bool isFinishReading)
         {
-            TrySetIsCompleted(isFinishReading);
-        }
-
-        /// <summary>
-        /// 読了状態を変更し、最終ページ未到達で読了にしようとした場合はfalseを返す。
-        /// </summary>
-        public bool TrySetIsCompleted(bool isFinishReading)
-        {
-            if (isFinishReading && CurrentPage != TotalPages)
+            if (isFinishReading)
             {
-                return false;
+                CurrentPage = TotalPages;
+                IsCompleted = true;
+                LastReadAt = DateTime.UtcNow;
+            }
+            else
+            {
+                IsCompleted = false;
             }
 
-            IsCompleted = isFinishReading;
             UpdateReadingStatus();
-            return true;
         }
     }
 }

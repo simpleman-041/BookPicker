@@ -1,6 +1,6 @@
 # BookPicker Codex 実装仕様
 
-最終更新日: 2026-08-25
+最終更新日: 2026-08-26
 
 ## 0. この文書の扱い
 
@@ -152,15 +152,31 @@ Codexは、画面表示名の変更に伴って、プロジェクト名やnamesp
 2. 選択した本の編集
 3. 新しい本の登録
 
-詳細パネルではBookの情報を確認できる。
+詳細表示では、少なくとも次の情報を扱う。
 
-`編集` ボタンを押すと編集モードへ切り替わり、編集可能な項目を入力欄へ変更する。
+- タイトル
+- `CurrentPage / TotalPages` の形式による進捗数値と進捗バー
+- 表紙画像
+- `Genre`
+- `InterestLevel`
+- `IsCompleted` をユーザー向けに表した読了状態
+- `LastReadAt`
+
+`ReadingStatus` は一覧カードの進捗表示や内部ロジックで利用し、詳細パネルには重複表示しない。
+
+`Id` はユーザー向け情報として表示しない。`CoverImagePath` も文字列として表示せず、表紙画像の表示にだけ利用する。
+
+`LastReadAt` は表示専用とし、ユーザーが直接編集する項目にはしない。
+
+`編集` ボタンを押すと編集モードへ切り替わり、編集ボタンを保存ボタンへ切り替える。編集モードでは `CurrentPage` と `TotalPages` の両方を編集可能にする。
 
 `保存` でバックエンドへ更新を送信し、成功後に詳細表示と一覧カードを最新状態へ更新する。
 
 `キャンセル` では保存せず、編集前の表示状態へ戻る。
 
-削除操作は詳細パネルから実行する方針とする。
+詳細パネル自体を閉じるための閉じる操作も用意する。
+
+削除操作は詳細パネル下部へ配置し、危険操作であることが視覚的に分かるようにする。実際の削除処理では確認操作を挟む方針とする。
 
 一覧画面の `＋ 本を追加` 操作で右側パネルを開き、新規登録モードを表示する。
 
@@ -182,7 +198,7 @@ Codexは、画面表示名の変更に伴って、プロジェクト名やnamesp
 | `InterestLevel` | 興味レベル | 可 |
 | `IsCompleted` | 読了状態 | 専用操作のみ |
 | `ReadingStatus` | 読書進捗 | 不可 |
-| `LastReadAt` | 最後に実際に読み進めた日時 | 不可 |
+| `LastReadAt` | 最後に読み進めた、または明示的に読了にした日時 | 不可 |
 | `CoverImagePath` | 表紙画像のパスまたはURL | 可 |
 
 既存のBookモデルにある入力検証や不正状態を防止するルールは維持する。
@@ -232,20 +248,30 @@ Completed
 基本フローは次のとおり。
 
 ```text
-CurrentPage が TotalPages と一致
-↓
-ReadingStatus はまだ LateStage
-↓
 ユーザーが専用の「読了にする」操作を行う
+↓
+CurrentPage が TotalPages 未満なら TotalPages へ進める
 ↓
 IsCompleted が true
 ↓
 ReadingStatus が Completed
+↓
+LastReadAt を現在のUTC日時へ更新
 ```
 
-`CurrentPage` が `TotalPages` 未満のときは「読了にする」操作を使用できない。
+ユーザーが専用の「読了にする」操作を行った場合は、現在の `CurrentPage` に関係なく読了にできる。
+
+`CurrentPage` が `TotalPages` 未満の場合は、システムが `CurrentPage` を `TotalPages` へ進め、`IsCompleted` を `true`、`ReadingStatus` を `Completed` にする。
+
+`CurrentPage` がすでに `TotalPages` と一致している場合も、`IsCompleted` を `true`、`ReadingStatus` を `Completed` にする。
+
+読了操作はユーザーが明示的に読み終えた操作とみなし、操作前の `CurrentPage` に関係なく、成功時は `LastReadAt` を現在のUTC日時へ更新する。
 
 読了済みの本には「読了解除」の専用操作を用意する。
+
+読了解除では `IsCompleted` だけを `false` にし、`CurrentPage` と `LastReadAt` は変更しない。`ReadingStatus` は現在の `CurrentPage` と `TotalPages` から再計算する。
+
+最終ページまで到達した本を読了解除した場合は、`CurrentPage` は `TotalPages` のまま、`ReadingStatus` は `LateStage` になる。
 
 読了済みの本で `CurrentPage` を `TotalPages` 未満へ戻した場合は、自動的に `IsCompleted` を `false` にして読了状態を解除する。
 
@@ -261,7 +287,7 @@ ReadingStatus が Completed
 
 新規作成時は `null`。
 
-更新条件は厳密に次のとおり。
+通常の進捗更新と一般編集における更新条件は厳密に次のとおり。
 
 ```text
 新しい CurrentPage > 更新前の CurrentPage
@@ -273,7 +299,7 @@ LastReadAt を現在のUTC日時へ更新
 
 この更新ルールは、現在ページ専用のprogress APIだけでなく、一般編集APIで `CurrentPage` を増加させた場合にも適用する。
 
-次の場合は更新しない。
+通常の進捗更新と一般編集では、次の場合は更新しない。
 
 - `CurrentPage` が同じ
 - `CurrentPage` が減少した
@@ -282,7 +308,10 @@ LastReadAt を現在のUTC日時へ更新
 - 総ページ数を変更した
 - 興味レベルを変更した
 - 表紙を変更した
-- 読了状態だけを変更した
+
+これとは別に、ユーザーが明示的に「読了にする」操作を行った場合は、`CurrentPage` がすでに `TotalPages` と一致している場合も含めて `LastReadAt` を現在のUTC日時へ更新する。
+
+読了解除では `LastReadAt` を変更しない。
 
 「最近読んだ」は `LastReadAt` の降順で並び替える。
 
@@ -319,6 +348,10 @@ APIから返せる
 ```
 
 完全な画像アップロード機能は別タスクとして追加できる構造にする。
+
+将来的には、詳細パネルの表紙画像をクリックしてファイルを選択し、サーバーへアップロードした画像の保存先を `CoverImagePath` に設定する流れを想定する。
+
+画像のアップロード、サーバー保存、削除は他の主要機能完成後に集中的に実装し、現時点では実装しない。
 
 ---
 
@@ -473,13 +506,18 @@ PUT /api/books/{id}/completion
 
 ```text
 読了にする
-CurrentPage == TotalPages のときだけ成功
+CurrentPage が TotalPages 未満なら TotalPages へ進める
+IsCompleted を true にする
+ReadingStatus を Completed にする
+LastReadAt を現在のUTC日時へ更新する
 
 読了解除
-既存のBookドメインルールに従って IsCompleted を false にする
+IsCompleted を false にする
+CurrentPage と LastReadAt は変更しない
+ReadingStatus を現在の進捗から再計算する
 ```
 
-`CurrentPage < TotalPages` の状態で `{ "isCompleted": true }` を指定した場合は `400 Bad Request` とする。
+`CurrentPage < TotalPages` の状態で `{ "isCompleted": true }` を指定した場合も、新しい読了ルールに従って成功する。
 
 存在しない本は `404 Not Found` とする。
 
@@ -605,7 +643,9 @@ Codexは単に動作するコードを大量生成するのではなく、既存
 - `LastReadAt` を直接編集できない
 - progress APIまたは一般編集APIで `CurrentPage` が増加したときだけ `LastReadAt` がUTC日時で更新される
 - `PUT /api/books/{id}/completion` で読了状態を変更でき、成功時に `204 No Content` になる
-- 最終ページ未到達で読了にしようとすると `400 Bad Request` になる
+- 最終ページ未到達で読了にすると `CurrentPage` が `TotalPages` へ進み、`IsCompleted` が `true`、`ReadingStatus` が `Completed` になる
+- 読了操作では、操作前の `CurrentPage` に関係なく `LastReadAt` が現在のUTC日時へ更新される
+- 読了解除では `CurrentPage` と `LastReadAt` が変更されず、最終ページでは `ReadingStatus` が `LateStage` になる
 - 本を削除できる
 - タイトルを部分一致、完全一致で検索できる
 - `InterestLevel`、`Genre`、`ReadingStatus` の詳細フィルターをselect形式で利用できる

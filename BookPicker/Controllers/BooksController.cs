@@ -104,10 +104,7 @@ namespace BookPicker.Controllers
                 return NotFound();
             }
 
-            if (!book.TrySetIsCompleted(updateCompletionRequest.IsCompleted))
-            {
-                return BadRequest("最終ページへ到達していない本を読了にすることはできません。");
-            }
+            book.SetIsCompleted(updateCompletionRequest.IsCompleted);
 
             await _dbContext.SaveChangesAsync();
             return NoContent();

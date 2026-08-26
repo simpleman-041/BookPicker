@@ -134,27 +134,60 @@ public class BookTests
     }
 
     [Fact]
-    public void SetIsCompleted_AtFinalPage_SetsCompletedStatus()
+    public void SetIsCompleted_AtFinalPage_CompletesBookAndUpdatesLastReadAt()
     {
         var book = CreateBook(totalPages: 100);
         book.UpdateCurrentPageAndReadingStatus(100);
+        var previousLastReadAt = book.LastReadAt!.Value;
+        WaitForUtcClockToAdvance(previousLastReadAt);
+        var beforeCompletion = DateTime.UtcNow;
 
         book.SetIsCompleted(true);
 
+        var afterCompletion = DateTime.UtcNow;
+        Assert.Equal(book.TotalPages, book.CurrentPage);
         Assert.True(book.IsCompleted);
         Assert.Equal(ReadingStatus.Completed, book.ReadingStatus);
+        Assert.True(book.LastReadAt > previousLastReadAt);
+        Assert.Equal(DateTimeKind.Utc, book.LastReadAt!.Value.Kind);
+        Assert.InRange(book.LastReadAt.Value, beforeCompletion, afterCompletion);
     }
 
     [Fact]
-    public void SetIsCompleted_BeforeFinalPage_DoesNotCompleteBook()
+    public void SetIsCompleted_BeforeFinalPage_AdvancesToFinalPageAndUpdatesCompletionState()
     {
         var book = CreateBook(totalPages: 100);
         book.UpdateCurrentPageAndReadingStatus(50);
+        var previousLastReadAt = book.LastReadAt!.Value;
+        WaitForUtcClockToAdvance(previousLastReadAt);
+        var beforeCompletion = DateTime.UtcNow;
 
         book.SetIsCompleted(true);
 
+        var afterCompletion = DateTime.UtcNow;
+        Assert.Equal(book.TotalPages, book.CurrentPage);
+        Assert.True(book.IsCompleted);
+        Assert.Equal(ReadingStatus.Completed, book.ReadingStatus);
+        Assert.True(book.LastReadAt > previousLastReadAt);
+        Assert.Equal(DateTimeKind.Utc, book.LastReadAt!.Value.Kind);
+        Assert.InRange(book.LastReadAt.Value, beforeCompletion, afterCompletion);
+    }
+
+    [Fact]
+    public void SetIsCompleted_WithFalse_PreservesProgressAndLastReadAtAndRecalculatesStatus()
+    {
+        var book = CreateBook(totalPages: 100);
+        book.UpdateCurrentPageAndReadingStatus(50);
+        book.SetIsCompleted(true);
+        var previousLastReadAt = book.LastReadAt;
+        WaitForUtcClockToAdvance(previousLastReadAt!.Value);
+
+        book.SetIsCompleted(false);
+
         Assert.False(book.IsCompleted);
-        Assert.Equal(ReadingStatus.MidWay, book.ReadingStatus);
+        Assert.Equal(100, book.CurrentPage);
+        Assert.Equal(previousLastReadAt, book.LastReadAt);
+        Assert.Equal(ReadingStatus.LateStage, book.ReadingStatus);
     }
 
     [Fact]

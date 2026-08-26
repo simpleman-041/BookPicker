@@ -121,33 +121,56 @@ public class BooksControllerTests
     }
 
     [Fact]
-    public async Task UpdateCompletion_AtFinalPage_CompletesBookAndReturnsNoContent()
+    public async Task UpdateCompletion_AtFinalPage_CompletesBookAndUpdatesLastReadAt()
     {
         using var database = new TestDatabase();
         var book = database.AddBook(totalPages: 100, currentPage: 100);
+        var previousLastReadAt = book.LastReadAt!.Value;
+        WaitForUtcClockToAdvance(previousLastReadAt);
+        var beforeCompletion = DateTime.UtcNow;
 
         var result = await database.Controller.UpdateCompletion(
             book.Id,
             new UpdateCompletionRequest { IsCompleted = true });
 
+        var afterCompletion = DateTime.UtcNow;
         Assert.IsType<NoContentResult>(result);
+        Assert.Equal(book.TotalPages, book.CurrentPage);
         Assert.True(book.IsCompleted);
         Assert.Equal(ReadingStatus.Completed, book.ReadingStatus);
+        Assert.True(book.LastReadAt > previousLastReadAt);
+        Assert.Equal(DateTimeKind.Utc, book.LastReadAt!.Value.Kind);
+        Assert.InRange(book.LastReadAt.Value, beforeCompletion, afterCompletion);
     }
 
     [Fact]
-    public async Task UpdateCompletion_BeforeFinalPage_ReturnsBadRequestWithoutCompletingBook()
+    public async Task UpdateCompletion_BeforeFinalPage_CompletesBookAndPersistsResult()
     {
         using var database = new TestDatabase();
         var book = database.AddBook(totalPages: 100, currentPage: 99);
+        var bookId = book.Id;
+        var previousLastReadAt = book.LastReadAt!.Value;
+        WaitForUtcClockToAdvance(previousLastReadAt);
+        var beforeCompletion = DateTime.UtcNow;
 
         var result = await database.Controller.UpdateCompletion(
-            book.Id,
+            bookId,
             new UpdateCompletionRequest { IsCompleted = true });
 
-        Assert.IsType<BadRequestObjectResult>(result);
-        Assert.False(book.IsCompleted);
-        Assert.Equal(ReadingStatus.LateStage, book.ReadingStatus);
+        var afterCompletion = DateTime.UtcNow;
+        Assert.IsType<NoContentResult>(result);
+        Assert.Equal(book.TotalPages, book.CurrentPage);
+        Assert.True(book.IsCompleted);
+        Assert.Equal(ReadingStatus.Completed, book.ReadingStatus);
+        Assert.True(book.LastReadAt > previousLastReadAt);
+        Assert.Equal(DateTimeKind.Utc, book.LastReadAt!.Value.Kind);
+        Assert.InRange(book.LastReadAt.Value, beforeCompletion, afterCompletion);
+
+        database.Context.ChangeTracker.Clear();
+        var getResult = await database.Controller.GetBook(bookId);
+        var reloadedBook = Assert.IsType<Book>(Assert.IsType<OkObjectResult>(getResult).Value);
+        Assert.Equal(reloadedBook.TotalPages, reloadedBook.CurrentPage);
+        Assert.True(reloadedBook.IsCompleted);
     }
 
     [Fact]
@@ -157,6 +180,9 @@ public class BooksControllerTests
         var book = database.AddBook(totalPages: 100, currentPage: 100);
         book.SetIsCompleted(true);
         await database.Context.SaveChangesAsync();
+        var previousCurrentPage = book.CurrentPage;
+        var previousLastReadAt = book.LastReadAt;
+        WaitForUtcClockToAdvance(previousLastReadAt!.Value);
 
         var result = await database.Controller.UpdateCompletion(
             book.Id,
@@ -164,6 +190,8 @@ public class BooksControllerTests
 
         Assert.IsType<NoContentResult>(result);
         Assert.False(book.IsCompleted);
+        Assert.Equal(previousCurrentPage, book.CurrentPage);
+        Assert.Equal(previousLastReadAt, book.LastReadAt);
         Assert.Equal(ReadingStatus.LateStage, book.ReadingStatus);
     }
 
