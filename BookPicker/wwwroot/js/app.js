@@ -16,6 +16,43 @@ const TITLE_MATCH_MODE_QUERY_VALUES = {
     partial: "Partial",
     exact: "Exact"
 };
+const READING_STATUS_QUERY_VALUES = {
+    lateStage: "3"
+};
+const SORT_QUERY_VALUES = {
+    interestLevel: "InterestLevel",
+    totalPages: "TotalPages",
+    lastReadAt: "LastReadAt",
+    ascending: "Ascending",
+    descending: "Descending"
+};
+const QUICK_FILTERS = {
+    all: {
+        sortField: "",
+        sortOrder: ""
+    },
+    interest: {
+        sortField: SORT_QUERY_VALUES.interestLevel,
+        sortOrder: SORT_QUERY_VALUES.descending
+    },
+    "nearly-finished": {
+        readingStatus: READING_STATUS_QUERY_VALUES.lateStage,
+        sortField: "",
+        sortOrder: ""
+    },
+    long: {
+        sortField: SORT_QUERY_VALUES.totalPages,
+        sortOrder: SORT_QUERY_VALUES.descending
+    },
+    short: {
+        sortField: SORT_QUERY_VALUES.totalPages,
+        sortOrder: SORT_QUERY_VALUES.ascending
+    },
+    "recently-read": {
+        sortField: SORT_QUERY_VALUES.lastReadAt,
+        sortOrder: SORT_QUERY_VALUES.descending
+    }
+};
 
 const bookList = document.getElementById("book-list");
 const bookCardTemplate = document.getElementById("book-card-template");
@@ -24,6 +61,10 @@ const titleSearchForm = document.getElementById("title-search-form");
 const titleSearchInput = document.getElementById("title-search");
 const titleSearchButton = document.getElementById("title-search-button");
 const titleMatchModeInputs = document.querySelectorAll('input[name="titleMatchMode"]');
+const interestLevelFilter = document.getElementById("interest-level");
+const genreFilter = document.getElementById("genre");
+const readingStatusFilter = document.getElementById("reading-status");
+const quickFilterButtons = document.querySelectorAll("[data-quick-filter]");
 const workspace = document.querySelector(".workspace");
 const addBookButton = document.getElementById("add-book-button");
 const bookDetailPanel = document.getElementById("book-detail-panel");
@@ -111,6 +152,14 @@ const INTEREST_LEVEL_NAME_LABELS = {
     PrimaryInterest: "最優先"
 };
 
+const READING_STATUS_LABELS = {
+    0: "未着手",
+    1: "序盤",
+    2: "中盤",
+    3: "終盤",
+    4: "読了"
+};
+
 let selectedBookId = null;
 let bookDetailAbortController = null;
 let currentBookDetail = null;
@@ -126,9 +175,17 @@ let isUpdatingProgress = false;
 let isDeletingBook = false;
 let deleteDialogReturnFocus = null;
 let isSearchingBooks = false;
+let bookListQueryRequestId = 0;
 let bookListQueryState = {
     searchTitle: "",
-    titleMatchMode: TITLE_MATCH_MODE_QUERY_VALUES.partial
+    titleMatchMode: TITLE_MATCH_MODE_QUERY_VALUES.partial,
+    interestLevel: "",
+    genre: "",
+    readingStatus: "",
+    detailReadingStatus: "",
+    quickFilter: "all",
+    sortField: "",
+    sortOrder: ""
 };
 
 function getBookApiUrl(bookId) {
@@ -149,6 +206,23 @@ function buildBooksApiUrl(queryState = bookListQueryState) {
     if (queryState.searchTitle !== "") {
         queryParameters.set("SearchTitle", queryState.searchTitle);
         queryParameters.set("TitleMatchMode", queryState.titleMatchMode);
+    }
+
+    if (queryState.interestLevel !== "") {
+        queryParameters.set("InterestLevel", queryState.interestLevel);
+    }
+
+    if (queryState.genre !== "") {
+        queryParameters.set("Genre", queryState.genre);
+    }
+
+    if (queryState.readingStatus !== "") {
+        queryParameters.set("ReadingStatus", queryState.readingStatus);
+    }
+
+    if (queryState.sortField !== "" && queryState.sortOrder !== "") {
+        queryParameters.set("Field", queryState.sortField);
+        queryParameters.set("Order", queryState.sortOrder);
     }
 
     const queryString = queryParameters.toString();
@@ -189,8 +263,52 @@ function createTitleSearchQueryState() {
     titleSearchInput.value = searchTitle;
 
     return {
+        ...bookListQueryState,
         searchTitle,
         titleMatchMode: getSelectedTitleMatchMode()
+    };
+}
+
+function createDetailedFilterQueryState(changedFilter) {
+    const readingStatusWasChanged = changedFilter === readingStatusFilter;
+    const nearlyFinishedWasSelected = bookListQueryState.quickFilter === "nearly-finished";
+    const nextReadingStatus = readingStatusWasChanged
+        ? readingStatusFilter.value
+        : bookListQueryState.readingStatus;
+
+    return {
+        ...bookListQueryState,
+        interestLevel: interestLevelFilter.value,
+        genre: genreFilter.value,
+        readingStatus: nextReadingStatus,
+        detailReadingStatus: readingStatusWasChanged
+            ? readingStatusFilter.value
+            : bookListQueryState.detailReadingStatus,
+        quickFilter: readingStatusWasChanged && nearlyFinishedWasSelected
+            ? "all"
+            : bookListQueryState.quickFilter,
+        sortField: readingStatusWasChanged && nearlyFinishedWasSelected
+            ? ""
+            : bookListQueryState.sortField,
+        sortOrder: readingStatusWasChanged && nearlyFinishedWasSelected
+            ? ""
+            : bookListQueryState.sortOrder
+    };
+}
+
+function createQuickFilterQueryState(quickFilter) {
+    const quickFilterDefinition = QUICK_FILTERS[quickFilter] ?? QUICK_FILTERS.all;
+    const nearlyFinishedWasSelected = bookListQueryState.quickFilter === "nearly-finished";
+
+    return {
+        ...bookListQueryState,
+        quickFilter: QUICK_FILTERS[quickFilter] === undefined ? "all" : quickFilter,
+        readingStatus: quickFilterDefinition.readingStatus
+            ?? (nearlyFinishedWasSelected
+                ? bookListQueryState.detailReadingStatus
+                : bookListQueryState.readingStatus),
+        sortField: quickFilterDefinition.sortField,
+        sortOrder: quickFilterDefinition.sortOrder
     };
 }
 
@@ -204,6 +322,41 @@ function syncTitleSearchControls(queryState) {
     for (const input of titleMatchModeInputs) {
         input.checked = input.value === inputValue;
     }
+}
+
+function syncDetailedFilterControls(queryState) {
+    interestLevelFilter.value = queryState.interestLevel;
+    genreFilter.value = queryState.genre;
+    readingStatusFilter.value = queryState.readingStatus;
+}
+
+function syncQuickFilterControls(queryState) {
+    for (const button of quickFilterButtons) {
+        const isActive = button.dataset.quickFilter === queryState.quickFilter;
+
+        button.classList.toggle("is-active", isActive);
+        button.setAttribute("aria-pressed", String(isActive));
+    }
+}
+
+function syncBookListQueryControls(queryState) {
+    syncTitleSearchControls(queryState);
+    syncDetailedFilterControls(queryState);
+    syncQuickFilterControls(queryState);
+}
+
+function populateDetailedFilterOptions(select, labels) {
+    const options = document.createDocumentFragment();
+
+    for (const [value, label] of Object.entries(labels)) {
+        const option = document.createElement("option");
+
+        option.value = value;
+        option.textContent = label;
+        options.appendChild(option);
+    }
+
+    select.appendChild(options);
 }
 
 function setTitleSearchingState(isSearching) {
@@ -223,28 +376,65 @@ function containsBookId(books, bookId) {
 }
 
 async function searchBooksByTitle() {
-    if (isSearchingBooks) {
-        return;
-    }
+    await applyBookListQueryState(
+        createTitleSearchQueryState(),
+        "タイトル検索に失敗しました。時間をおいて再度お試しください。",
+        "検索結果から編集中の本が外れます。未保存の変更を破棄して検索しますか？"
+    );
+}
 
+async function searchBooksByDetailedFilters(changedFilter) {
+    const nextQueryState = createDetailedFilterQueryState(changedFilter);
+
+    syncQuickFilterControls(nextQueryState);
+    await applyBookListQueryState(
+        nextQueryState,
+        "本の一覧を取得できませんでした。時間をおいて再度お試しください。",
+        "絞り込み結果から編集中の本が外れます。未保存の変更を破棄して絞り込みますか？"
+    );
+}
+
+async function searchBooksByQuickFilter(quickFilter) {
+    const nextQueryState = createQuickFilterQueryState(quickFilter);
+
+    syncBookListQueryControls(nextQueryState);
+    await applyBookListQueryState(
+        nextQueryState,
+        "本の一覧を取得できませんでした。時間をおいて再度お試しください。",
+        "クイック条件の結果から編集中の本が外れます。未保存の変更を破棄して絞り込みますか？"
+    );
+}
+
+async function applyBookListQueryState(nextQueryState, failureMessage, discardMessage) {
     const previousQueryState = { ...bookListQueryState };
-    const nextQueryState = createTitleSearchQueryState();
+    const requestId = ++bookListQueryRequestId;
 
     bookListQueryState = nextQueryState;
     setTitleSearchingState(true);
 
     try {
         const books = await fetchBooks(nextQueryState);
+
+        if (requestId !== bookListQueryRequestId) {
+            return;
+        }
+
         const selectedBookIsExcluded = selectedBookId !== null
             && !containsBookId(books, selectedBookId);
 
         if (selectedBookIsExcluded
             && !isCreatingBook
-            && !confirmDiscardUnsavedPanelChanges(
-                "検索結果から編集中の本が外れます。未保存の変更を破棄して検索しますか？"
-            )) {
+            && !confirmDiscardUnsavedPanelChanges(discardMessage)) {
+            if (requestId !== bookListQueryRequestId) {
+                return;
+            }
+
             bookListQueryState = previousQueryState;
-            syncTitleSearchControls(previousQueryState);
+            syncBookListQueryControls(previousQueryState);
+            return;
+        }
+
+        if (requestId !== bookListQueryRequestId) {
             return;
         }
 
@@ -257,14 +447,17 @@ async function searchBooksByTitle() {
             closeBookDetailPanel();
         }
     } catch (error) {
-        console.error("タイトル検索に失敗しました。", error);
-        showListMessage(
-            "タイトル検索に失敗しました。時間をおいて再度お試しください。",
-            "error"
-        );
+        if (requestId !== bookListQueryRequestId) {
+            return;
+        }
+
+        console.error("本の一覧の再取得に失敗しました。", error);
+        showListMessage(failureMessage, "error");
         updateResultCount(null);
     } finally {
-        setTitleSearchingState(false);
+        if (requestId === bookListQueryRequestId) {
+            setTitleSearchingState(false);
+        }
     }
 }
 
@@ -2186,14 +2379,21 @@ function showListMessage(message, type) {
     bookList.replaceChildren(messageItem);
 }
 
+function hasActiveBookListQuery(queryState = bookListQueryState) {
+    return queryState.searchTitle !== ""
+        || queryState.interestLevel !== ""
+        || queryState.genre !== ""
+        || queryState.readingStatus !== "";
+}
+
 function renderBooks(books) {
     const selectedBookIdBeforeRender = selectedBookId;
 
     if (books.length === 0) {
         showListMessage(
-            bookListQueryState.searchTitle === ""
-                ? "本がまだ登録されていません。"
-                : "該当する本がありません。",
+            hasActiveBookListQuery()
+                ? "該当する本がありません。"
+                : "本がまだ登録されていません。",
             "empty"
         );
         return;
@@ -2223,10 +2423,26 @@ function updateResultCount(count) {
         : `表示件数: ${count}冊`;
 }
 
+populateDetailedFilterOptions(interestLevelFilter, INTEREST_LEVEL_LABELS);
+populateDetailedFilterOptions(genreFilter, GENRE_LABELS);
+populateDetailedFilterOptions(readingStatusFilter, READING_STATUS_LABELS);
+
 titleSearchForm.addEventListener("submit", (event) => {
     event.preventDefault();
     searchBooksByTitle();
 });
+
+for (const filter of [interestLevelFilter, genreFilter, readingStatusFilter]) {
+    filter.addEventListener("change", () => {
+        searchBooksByDetailedFilters(filter);
+    });
+}
+
+for (const quickFilterButton of quickFilterButtons) {
+    quickFilterButton.addEventListener("click", () => {
+        searchBooksByQuickFilter(quickFilterButton.dataset.quickFilter);
+    });
+}
 
 addBookButton.addEventListener("click", () => {
     requestStartBookCreation();
