@@ -66,6 +66,8 @@ const genreFilter = document.getElementById("genre");
 const readingStatusFilter = document.getElementById("reading-status");
 const detailedFilterResetButton = document.getElementById("detailed-filter-reset");
 const quickFilterButtons = document.querySelectorAll("[data-quick-filter]");
+const favoriteFilterButton = document.getElementById("favorite-filter");
+const bookListActionError = document.getElementById("book-list-action-error");
 const workspace = document.querySelector(".workspace");
 const addBookButton = document.getElementById("add-book-button");
 const bookDetailPanel = document.getElementById("book-detail-panel");
@@ -179,6 +181,7 @@ let completionUpdateTarget = null;
 let isUpdatingProgress = false;
 let isUploadingCover = false;
 let isDeletingBook = false;
+let favoriteUpdateBookId = null;
 let deleteDialogReturnFocus = null;
 let isSearchingBooks = false;
 let bookListQueryRequestId = 0;
@@ -190,6 +193,7 @@ let bookListQueryState = {
     readingStatus: "",
     detailReadingStatus: "",
     quickFilter: "all",
+    isFavorite: false,
     sortField: "",
     sortOrder: ""
 };
@@ -210,6 +214,10 @@ function getBookCoverApiUrl(bookId) {
     return `${getBookApiUrl(bookId)}/cover`;
 }
 
+function getBookFavoriteApiUrl(bookId) {
+    return `${getBookApiUrl(bookId)}/favorite`;
+}
+
 function buildBooksApiUrl(queryState = bookListQueryState) {
     const queryParameters = new URLSearchParams();
 
@@ -228,6 +236,10 @@ function buildBooksApiUrl(queryState = bookListQueryState) {
 
     if (queryState.readingStatus !== "") {
         queryParameters.set("ReadingStatus", queryState.readingStatus);
+    }
+
+    if (queryState.isFavorite === true) {
+        queryParameters.set("IsFavorite", "true");
     }
 
     if (queryState.sortField !== "" && queryState.sortOrder !== "") {
@@ -336,6 +348,13 @@ function createQuickFilterQueryState(quickFilter) {
     };
 }
 
+function createFavoriteFilterQueryState() {
+    return {
+        ...bookListQueryState,
+        isFavorite: !bookListQueryState.isFavorite
+    };
+}
+
 function syncTitleSearchControls(queryState) {
     titleSearchInput.value = queryState.searchTitle;
 
@@ -372,10 +391,23 @@ function syncQuickFilterControls(queryState) {
     }
 }
 
+function syncFavoriteFilterControl(queryState) {
+    const isActive = queryState.isFavorite === true;
+    const star = favoriteFilterButton.querySelector(".favorite-filter__star");
+
+    favoriteFilterButton.classList.toggle("is-active", isActive);
+    favoriteFilterButton.setAttribute("aria-pressed", String(isActive));
+
+    if (star !== null) {
+        star.textContent = isActive ? "★" : "☆";
+    }
+}
+
 function syncBookListQueryControls(queryState) {
     syncTitleSearchControls(queryState);
     syncDetailedFilterControls(queryState);
     syncQuickFilterControls(queryState);
+    syncFavoriteFilterControl(queryState);
 }
 
 function populateDetailedFilterOptions(select, labels) {
@@ -446,6 +478,17 @@ async function searchBooksByQuickFilter(quickFilter) {
         nextQueryState,
         "本の一覧を取得できませんでした。時間をおいて再度お試しください。",
         "クイック条件の結果から編集中の本が外れます。未保存の変更を破棄して絞り込みますか？"
+    );
+}
+
+async function searchBooksByFavoriteFilter() {
+    const nextQueryState = createFavoriteFilterQueryState();
+
+    syncFavoriteFilterControl(nextQueryState);
+    await applyBookListQueryState(
+        nextQueryState,
+        "お気に入りの絞り込みに失敗しました。時間をおいて再度お試しください。",
+        "絞り込み結果から編集中の本が外れます。未保存の変更を破棄して絞り込みますか？"
     );
 }
 
@@ -609,13 +652,77 @@ function createMetadataItem(label, value, valueClassName = "") {
     return item;
 }
 
+function createFavoriteButton(book, source) {
+    const button = document.createElement("button");
+    const star = createTextElement(
+        "span",
+        source === "detail"
+            ? "detail-book__favorite-star"
+            : "book-card__favorite-star",
+        book.isFavorite ? "★" : "☆"
+    );
+    const bookId = String(book.id);
+    const isFavorite = Boolean(book.isFavorite);
+    const isUpdating = favoriteUpdateBookId === bookId;
+    const actionLabel = isFavorite ? "お気に入りから外す" : "お気に入りに追加";
+
+    button.type = "button";
+    button.className = source === "detail"
+        ? "detail-book__favorite-button"
+        : "book-card__favorite";
+    if (source === "detail") {
+        button.id = "book-detail-favorite";
+    }
+    button.classList.toggle("is-favorite", isFavorite);
+    button.dataset.favoriteBookId = bookId;
+    button.dataset.favoriteSource = source;
+    button.dataset.favoriteTitle = book.title || "この本";
+    button.setAttribute("aria-pressed", String(isFavorite));
+    button.setAttribute(
+        "aria-label",
+        isUpdating ? `${book.title}のお気に入り状態を更新中` : `${book.title}を${actionLabel}`
+    );
+    button.title = actionLabel;
+    button.disabled = isUpdating || (source === "detail" && isDetailUpdateInProgress());
+    button.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        requestBookFavoriteChange(book, source);
+    });
+    button.appendChild(star);
+
+    return button;
+}
+
+function createDetailFavoriteControl(book) {
+    const control = document.createElement("div");
+    const errorMessage = createTextElement("p", "detail-book__favorite-error", "");
+    const updatingStatus = createTextElement(
+        "p",
+        "detail-book__favorite-status",
+        "お気に入り状態を更新しています…"
+    );
+
+    control.className = "detail-book__favorite-control";
+    errorMessage.id = "book-favorite-error";
+    errorMessage.setAttribute("role", "alert");
+    errorMessage.hidden = true;
+    updatingStatus.id = "book-favorite-status";
+    updatingStatus.setAttribute("role", "status");
+    updatingStatus.hidden = favoriteUpdateBookId !== String(book.id);
+    control.append(createFavoriteButton(book, "detail"), errorMessage, updatingStatus);
+
+    return control;
+}
+
 function isDetailUpdateInProgress() {
     return isSavingBook
         || isRegisteringBook
         || isUpdatingCompletion
         || isUpdatingProgress
         || isUploadingCover
-        || isDeletingBook;
+        || isDeletingBook
+        || favoriteUpdateBookId !== null;
 }
 
 function createCoverUploadControl(book, options = {}) {
@@ -894,6 +1001,7 @@ function createBookDetail(book) {
     const title = createTextElement("h3", "detail-book__title", book.title || "タイトル未設定");
     const progressSection = createBookProgressSection(book);
     const main = document.createElement("div");
+    const visual = document.createElement("div");
     const metadata = document.createElement("dl");
     const footer = document.createElement("footer");
     const deleteButton = createTextElement("button", "detail-panel__delete", "削除");
@@ -901,6 +1009,8 @@ function createBookDetail(book) {
     article.className = "detail-book";
 
     main.className = "detail-book__main";
+    visual.className = "detail-book__visual";
+    visual.append(createCoverUploadControl(book), createDetailFavoriteControl(book));
 
     metadata.className = "detail-book__metadata";
     metadata.append(
@@ -916,7 +1026,7 @@ function createBookDetail(book) {
             "detail-book__last-read"
         )
     );
-    main.append(createCoverUploadControl(book), metadata);
+    main.append(visual, metadata);
 
     footer.className = "detail-book__footer";
     deleteButton.type = "button";
@@ -1946,10 +2056,39 @@ function setProgressActionError(message) {
     errorMessage.hidden = message === "";
 }
 
+function setBookListActionError(message) {
+    bookListActionError.textContent = message;
+    bookListActionError.hidden = message === "";
+}
+
+function clearFavoriteActionErrors() {
+    const detailError = document.getElementById("book-favorite-error");
+
+    setBookListActionError("");
+
+    if (detailError !== null) {
+        detailError.textContent = "";
+        detailError.hidden = true;
+    }
+}
+
+function showFavoriteActionError(message, source) {
+    const detailError = document.getElementById("book-favorite-error");
+
+    if (source === "detail" && detailError !== null) {
+        detailError.textContent = message;
+        detailError.hidden = false;
+        return;
+    }
+
+    setBookListActionError(message);
+}
+
 function setDetailViewControlsDisabled(isDisabled) {
     const progressInput = document.getElementById("book-progress-current-page");
     const progressButton = document.getElementById("book-progress-update");
     const completionButton = document.getElementById("book-completion-action");
+    const favoriteButton = document.getElementById("book-detail-favorite");
     const coverButton = document.getElementById("book-cover-select");
     const coverInput = document.getElementById("book-cover-file");
     const deleteButton = document.getElementById("book-detail-delete");
@@ -1964,6 +2103,10 @@ function setDetailViewControlsDisabled(isDisabled) {
 
     if (completionButton !== null) {
         completionButton.disabled = isDisabled;
+    }
+
+    if (favoriteButton !== null) {
+        favoriteButton.disabled = isDisabled;
     }
 
     if (coverButton !== null) {
@@ -2123,6 +2266,44 @@ function setCompletionUpdatingState(isUpdating, targetState = null) {
         updatingStatus.textContent = targetState
             ? "読了状態を更新しています…"
             : "読了状態を解除しています…";
+        updatingStatus.hidden = !isUpdating;
+    }
+}
+
+function setFavoriteUpdatingState(bookId, isUpdating) {
+    const normalizedBookId = String(bookId);
+
+    favoriteUpdateBookId = isUpdating ? normalizedBookId : null;
+
+    for (const button of document.querySelectorAll("[data-favorite-book-id]")) {
+        if (button.dataset.favoriteBookId !== normalizedBookId) {
+            continue;
+        }
+
+        const bookTitle = button.dataset.favoriteTitle || "この本";
+
+        button.disabled = isUpdating;
+        button.setAttribute(
+            "aria-label",
+            isUpdating
+                ? `${bookTitle}のお気に入り状態を更新中`
+                : button.title
+        );
+    }
+
+    const isSelectedBook = selectedBookId === normalizedBookId
+        && !bookDetailPanel.hidden
+        && !isCreatingBook;
+
+    if (isSelectedBook) {
+        bookDetailPanel.setAttribute("aria-busy", String(isUpdating));
+        bookDetailEditButton.disabled = isUpdating || currentBookDetail === null;
+        bookDetailCloseButton.disabled = isUpdating;
+        setDetailViewControlsDisabled(isUpdating);
+    }
+
+    const updatingStatus = document.getElementById("book-favorite-status");
+    if (updatingStatus !== null) {
         updatingStatus.hidden = !isUpdating;
     }
 }
@@ -2420,6 +2601,159 @@ async function updateBookCompletion(bookId, isCompleted) {
         error.status = response.status;
         error.apiMessage = await readApiErrorMessage(response);
         throw error;
+    }
+}
+
+async function updateBookFavorite(bookId, isFavorite) {
+    const favoriteApiUrl = getBookFavoriteApiUrl(bookId);
+    const response = await fetch(favoriteApiUrl, {
+        method: "PUT",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ isFavorite })
+    });
+
+    if (!response.ok) {
+        const error = new Error(`PUT ${favoriteApiUrl} failed: ${response.status}`);
+
+        error.status = response.status;
+        error.apiMessage = await readApiErrorMessage(response);
+        throw error;
+    }
+}
+
+async function refreshFavoriteBookViews(bookId) {
+    const normalizedBookId = String(bookId);
+    const shouldRefreshDetail = selectedBookId === normalizedBookId
+        && !isCreatingBook;
+    const detailPromise = shouldRefreshDetail
+        ? fetchBookDetail(normalizedBookId)
+        : Promise.resolve(null);
+    const [detailResult, listResult] = await Promise.allSettled([
+        detailPromise,
+        fetchBooks()
+    ]);
+    let bookIsVisible = true;
+
+    if (listResult.status === "fulfilled") {
+        bookIsVisible = containsBookId(listResult.value, normalizedBookId);
+        updateBookList(listResult.value);
+
+        if (shouldRefreshDetail && bookIsVisible) {
+            setSelectedBook(normalizedBookId);
+        } else if (shouldRefreshDetail) {
+            closeBookDetailPanel();
+        }
+    }
+
+    if (shouldRefreshDetail
+        && detailResult.status === "fulfilled"
+        && detailResult.value !== null
+        && bookIsVisible
+        && selectedBookId === normalizedBookId) {
+        renderBookDetail(detailResult.value);
+    }
+
+    return {
+        detailError: shouldRefreshDetail && detailResult.status === "rejected"
+            ? detailResult.reason
+            : null,
+        listError: listResult.status === "rejected" ? listResult.reason : null
+    };
+}
+
+function getFavoriteFailureMessage(error, targetState) {
+    if (error.status === 404) {
+        return "この本は見つかりませんでした。すでに削除された可能性があります。";
+    }
+
+    const operation = targetState ? "お気に入りに追加" : "お気に入りから削除";
+
+    if (error.status === 400 && error.apiMessage) {
+        return `${operation}できませんでした。${error.apiMessage}`;
+    }
+
+    return `${operation}できませんでした。表示は変更前の状態を維持しています。時間をおいて再度お試しください。`;
+}
+
+function getFavoriteRefreshFailureMessage(detailError, listError) {
+    if (detailError !== null && listError !== null) {
+        return "お気に入り状態は変更されましたが、詳細と一覧の最新情報を再取得できませんでした。ページを再読み込みしてください。";
+    }
+
+    if (detailError !== null) {
+        return detailError.status === 404
+            ? "お気に入り状態は変更されましたが、この本の最新情報を取得できませんでした。一覧を更新して再度お試しください。"
+            : "お気に入り状態は変更されましたが、詳細の最新情報を再取得できませんでした。本を選び直してください。";
+    }
+
+    return "お気に入り状態は変更されましたが、一覧の最新情報を再取得できませんでした。ページを再読み込みしてください。";
+}
+
+async function requestBookFavoriteChange(book, source) {
+    const bookId = String(book.id);
+
+    if (favoriteUpdateBookId !== null || isDetailUpdateInProgress()) {
+        return;
+    }
+
+    if (editingBookId === bookId) {
+        clearFavoriteActionErrors();
+        showFavoriteActionError(
+            "この本を編集中です。保存またはキャンセルしてからお気に入りを変更してください。",
+            source
+        );
+        return;
+    }
+
+    const targetState = !Boolean(book.isFavorite);
+    let favoriteUpdated = false;
+    let refreshCompleted = false;
+
+    clearFavoriteActionErrors();
+    setFavoriteUpdatingState(bookId, true);
+
+    try {
+        await updateBookFavorite(bookId, targetState);
+        favoriteUpdated = true;
+
+        const { detailError, listError } = await refreshFavoriteBookViews(bookId);
+
+        if (detailError !== null || listError !== null) {
+            console.error("お気に入り状態の変更後に最新情報を再取得できませんでした。", {
+                detailError,
+                listError
+            });
+            showFavoriteActionError(
+                getFavoriteRefreshFailureMessage(detailError, listError),
+                source
+            );
+            return;
+        }
+
+        refreshCompleted = true;
+    } catch (error) {
+        if (favoriteUpdated) {
+            console.error("お気に入り状態の変更後に最新情報を反映できませんでした。", error);
+            showFavoriteActionError(
+                "お気に入り状態は変更されましたが、最新情報を画面へ反映できませんでした。ページを再読み込みしてください。",
+                source
+            );
+        } else {
+            console.error("お気に入り状態を変更できませんでした。", error);
+            showFavoriteActionError(getFavoriteFailureMessage(error, targetState), source);
+        }
+    } finally {
+        setFavoriteUpdatingState(bookId, false);
+    }
+
+    if (refreshCompleted) {
+        const focusTarget = Array.from(document.querySelectorAll("[data-favorite-book-id]"))
+            .find((button) => button.dataset.favoriteBookId === bookId
+                && button.dataset.favoriteSource === source);
+
+        focusTarget?.focus();
     }
 }
 
@@ -2760,6 +3094,7 @@ async function saveBookEdits(event) {
 function createBookCard(book) {
     const bookItem = bookCardTemplate.content.firstElementChild.cloneNode(true);
     const card = bookItem.querySelector(".book-card");
+    const favoritePlaceholder = bookItem.querySelector(".book-card__favorite");
     const coverImage = bookItem.querySelector(".book-card__cover-image");
     const title = bookItem.querySelector(".book-card__title");
     const currentPage = bookItem.querySelector(".book-card__current-page");
@@ -2767,6 +3102,8 @@ function createBookCard(book) {
     const progress = bookItem.querySelector(".book-card__progress");
     const progressValue = bookItem.querySelector(".book-card__progress-value");
     const progressPercentage = calculateProgressPercentage(book.currentPage, book.totalPages);
+
+    favoritePlaceholder.replaceWith(createFavoriteButton(book, "card"));
 
     card.dataset.bookId = String(book.id);
     card.setAttribute("aria-pressed", "false");
@@ -2806,7 +3143,8 @@ function hasActiveBookListQuery(queryState = bookListQueryState) {
     return queryState.searchTitle !== ""
         || queryState.interestLevel !== ""
         || queryState.genre !== ""
-        || queryState.readingStatus !== "";
+        || queryState.readingStatus !== ""
+        || queryState.isFavorite === true;
 }
 
 function renderBooks(books) {
@@ -2850,6 +3188,7 @@ populateDetailedFilterOptions(interestLevelFilter, INTEREST_LEVEL_LABELS);
 populateDetailedFilterOptions(genreFilter, GENRE_LABELS);
 populateDetailedFilterOptions(readingStatusFilter, READING_STATUS_LABELS);
 updateDetailedFilterResetButtonState();
+syncFavoriteFilterControl(bookListQueryState);
 
 titleSearchForm.addEventListener("submit", (event) => {
     event.preventDefault();
@@ -2871,6 +3210,10 @@ for (const quickFilterButton of quickFilterButtons) {
         searchBooksByQuickFilter(quickFilterButton.dataset.quickFilter);
     });
 }
+
+favoriteFilterButton.addEventListener("click", () => {
+    searchBooksByFavoriteFilter();
+});
 
 addBookButton.addEventListener("click", () => {
     requestStartBookCreation();

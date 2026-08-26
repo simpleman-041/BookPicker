@@ -14,6 +14,10 @@ namespace BookPicker.Services
             {
                 filteredBooks = filteredBooks.Where(b => b.IsCompleted == criteria.IsCompleted.Value);
             }
+            if (criteria.IsFavorite.HasValue)
+            {
+                filteredBooks = filteredBooks.Where(b => b.IsFavorite == criteria.IsFavorite.Value);
+            }
             if (criteria.Genre.HasValue)
             {
                 filteredBooks = filteredBooks.Where(b => b.Genre == criteria.Genre.Value);

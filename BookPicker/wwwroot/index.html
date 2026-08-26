@@ -56,9 +56,19 @@
             <button class="quick-filter" type="button" data-quick-filter="short" aria-pressed="false">短めに読む</button>
             <button class="quick-filter" type="button" data-quick-filter="recently-read" aria-pressed="false">最近読んだ</button>
         </div>
-        <output id="book-result-count" class="quick-filters__result-count" aria-live="polite">
-            表示件数: 読み込み中
-        </output>
+        <div class="quick-filters__utility">
+            <button
+                id="favorite-filter"
+                class="favorite-filter"
+                type="button"
+                aria-pressed="false">
+                <span class="favorite-filter__star" aria-hidden="true">☆</span>
+                <span>お気に入り</span>
+            </button>
+            <output id="book-result-count" class="quick-filters__result-count" aria-live="polite">
+                表示件数: 読み込み中
+            </output>
+        </div>
     </nav>
 
     <main class="workspace">
@@ -101,10 +111,15 @@
                 </div>
             </div>
 
+            <p id="book-list-action-error" class="book-list-action-error" role="alert" hidden></p>
+
             <ul id="book-list" class="book-grid" aria-label="登録されている本" aria-live="polite"></ul>
 
             <template id="book-card-template">
                 <li class="book-grid__item">
+                    <button class="book-card__favorite" type="button" aria-pressed="false">
+                        <span class="book-card__favorite-star" aria-hidden="true">☆</span>
+                    </button>
                     <button class="book-card" type="button">
                         <span class="book-card__cover">
                             <img class="book-card__cover-image" src="" alt="" loading="lazy" />

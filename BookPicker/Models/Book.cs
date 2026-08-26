@@ -19,6 +19,10 @@
         /// </summary>
         public bool          IsCompleted   { get; private set; } = false;
         /// <summary>
+        /// お気に入りフラグ。trueの場合はお気に入り、falseの場合は未お気に入り。
+        /// </summary>
+        public bool          IsFavorite    { get; private set; } = false;
+        /// <summary>
         /// 読書の進捗を5段階で表す。手つかず、序盤、中盤、終盤、完了
         /// </summary>
         public ReadingStatus ReadingStatus { get; private set; } = ReadingStatus.NotStarted;
@@ -229,6 +233,14 @@
             }
 
             UpdateReadingStatus();
+        }
+
+        /// <summary>
+        /// お気に入り状態を専用操作から安全に変更する。
+        /// </summary>
+        public void SetIsFavorite(bool isFavorite)
+        {
+            IsFavorite = isFavorite;
         }
     }
 }

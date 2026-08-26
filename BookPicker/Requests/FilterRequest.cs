@@ -8,6 +8,7 @@ namespace BookPicker.Requests
     public class FilterRequest
     {
         public bool?           IsCompleted    { get; set; } = null;
+        public bool?           IsFavorite     { get; set; } = null;
         public Genre?          Genre          { get; set; } = null;
         public int?            MinPages       { get; set; } = null;
         public int?            MaxPages       { get; set; } = null;

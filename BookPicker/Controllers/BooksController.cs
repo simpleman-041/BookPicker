@@ -202,6 +202,21 @@ namespace BookPicker.Controllers
             return NoContent();
         }
 
+        [HttpPut("{id}/favorite")]
+        public async Task<IActionResult> UpdateFavorite(int id, UpdateFavoriteRequest updateFavoriteRequest)
+        {
+            var book = await _dbContext.Books.FindAsync(id);
+            if (book == null)
+            {
+                return NotFound();
+            }
+
+            book.SetIsFavorite(updateFavoriteRequest.IsFavorite);
+
+            await _dbContext.SaveChangesAsync();
+            return NoContent();
+        }
+
         [HttpPut("{id}/progress")]
         public async Task<IActionResult> UpdateCurrentPage(int id, UpdateCurrentPageRequest updateCurrentPageRequest)
         {
@@ -241,6 +256,7 @@ namespace BookPicker.Controllers
             {
                 var filterCriteria = new FilterCriteria(
                     filterRequest.IsCompleted,
+                    filterRequest.IsFavorite,
                     filterRequest.Genre,
                     filterRequest.MinPages,
                     filterRequest.MaxPages,

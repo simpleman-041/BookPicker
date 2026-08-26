@@ -13,6 +13,7 @@
     public class FilterCriteria
     {
         public bool?           IsCompleted    { get; private set; } = null;
+        public bool?           IsFavorite     { get; private set; } = null;
         public Genre?          Genre          { get; private set; } = null;
         public int?            MinPages       { get; private set; } = null;
         public int?            MaxPages       { get; private set; } = null;
@@ -22,7 +23,8 @@
         public TitleMatchMode? TitleMatchMode { get; private set; } = null;
 
         public FilterCriteria(
-            bool?           isCompleted,   
+            bool?           isCompleted,
+            bool?           isFavorite,
             Genre?          genre,        
             int?            minPages,     
             int?            maxPages,     
@@ -95,13 +97,14 @@
                 throw new ArgumentException(nameof(titleMatchMode), "タイトルが入力されているため、一致検索モードを有効化する必要があります。");
             }
 
-            IsCompleted   = isCompleted;
-            Genre         = genre;
-            MinPages      = minPages;
-            MaxPages      = maxPages;
-            ReadingStatus = readingStatus;
-            InterestLevel = interestLevel;
-            SearchTitle   = searchTitle;
+            IsCompleted    = isCompleted;
+            IsFavorite     = isFavorite;
+            Genre          = genre;
+            MinPages       = minPages;
+            MaxPages       = maxPages;
+            ReadingStatus  = readingStatus;
+            InterestLevel  = interestLevel;
+            SearchTitle    = searchTitle;
             TitleMatchMode = titleMatchMode;
         }
 
