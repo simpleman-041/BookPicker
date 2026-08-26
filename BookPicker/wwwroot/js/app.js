@@ -23,6 +23,12 @@ const bookDetailContent = document.getElementById("book-detail-content");
 const bookDetailCloseButton = document.getElementById("book-detail-close");
 const bookDetailEditButton = document.getElementById("book-detail-edit");
 const bookDetailCancelButton = document.getElementById("book-detail-cancel");
+const bookDeleteDialog = document.getElementById("book-delete-dialog");
+const bookDeleteHeading = document.getElementById("book-delete-heading");
+const bookDeleteError = document.getElementById("book-delete-error");
+const bookDeleteStatus = document.getElementById("book-delete-status");
+const bookDeleteCancelButton = document.getElementById("book-delete-cancel");
+const bookDeleteConfirmButton = document.getElementById("book-delete-confirm");
 
 const GENRE_LABELS = {
     0: "未指定",
@@ -105,6 +111,8 @@ let isSavingBook = false;
 let isUpdatingCompletion = false;
 let completionUpdateTarget = null;
 let isUpdatingProgress = false;
+let isDeletingBook = false;
+let deleteDialogReturnFocus = null;
 
 function getBookApiUrl(bookId) {
     return `${BOOKS_API_URL}/${encodeURIComponent(bookId)}`;
@@ -241,7 +249,7 @@ function createMetadataItem(label, value, valueClassName = "") {
 }
 
 function isDetailUpdateInProgress() {
-    return isSavingBook || isUpdatingCompletion || isUpdatingProgress;
+    return isSavingBook || isUpdatingCompletion || isUpdatingProgress || isDeletingBook;
 }
 
 function createBookProgressSection(book) {
@@ -414,8 +422,9 @@ function createBookDetail(book) {
 
     footer.className = "detail-book__footer";
     deleteButton.type = "button";
-    deleteButton.disabled = true;
-    deleteButton.title = "削除機能は現在準備中です";
+    deleteButton.id = "book-detail-delete";
+    deleteButton.disabled = isDetailUpdateInProgress();
+    deleteButton.addEventListener("click", openBookDeleteDialog);
     footer.appendChild(deleteButton);
 
     article.append(title, progressSection, main, footer);
@@ -971,6 +980,7 @@ function setDetailViewControlsDisabled(isDisabled) {
     const progressInput = document.getElementById("book-progress-current-page");
     const progressButton = document.getElementById("book-progress-update");
     const completionButton = document.getElementById("book-completion-action");
+    const deleteButton = document.getElementById("book-detail-delete");
 
     if (progressInput !== null) {
         progressInput.disabled = isDisabled;
@@ -982,6 +992,133 @@ function setDetailViewControlsDisabled(isDisabled) {
 
     if (completionButton !== null) {
         completionButton.disabled = isDisabled;
+    }
+
+    if (deleteButton !== null) {
+        deleteButton.disabled = isDisabled;
+    }
+}
+
+function setBookDeleteError(message) {
+    bookDeleteError.textContent = message;
+    bookDeleteError.hidden = message === "";
+}
+
+function setBookDeletingState(isDeleting) {
+    isDeletingBook = isDeleting;
+    bookDeleteDialog.setAttribute("aria-busy", String(isDeleting));
+    bookDetailPanel.setAttribute("aria-busy", String(isDeleting));
+    bookDeleteCancelButton.disabled = isDeleting;
+    bookDeleteConfirmButton.disabled = isDeleting;
+    bookDeleteConfirmButton.textContent = isDeleting ? "削除中…" : "削除する";
+    bookDeleteStatus.hidden = !isDeleting;
+    bookDetailEditButton.disabled = isDeleting || currentBookDetail === null;
+    bookDetailCloseButton.disabled = isDeleting;
+    setDetailViewControlsDisabled(isDeleting);
+}
+
+function openBookDeleteDialog() {
+    if (currentBookDetail === null
+        || editingBookId !== null
+        || isDetailUpdateInProgress()
+        || String(currentBookDetail.id) !== selectedBookId) {
+        return;
+    }
+
+    deleteDialogReturnFocus = document.activeElement;
+    bookDeleteHeading.textContent = `「${currentBookDetail.title || "タイトル未設定"}」を削除しますか？`;
+    setBookDeleteError("");
+    setBookDeletingState(false);
+    bookDeleteDialog.showModal();
+    bookDeleteCancelButton.focus();
+}
+
+function closeBookDeleteDialog(restoreFocus = true) {
+    if (isDeletingBook || !bookDeleteDialog.open) {
+        return;
+    }
+
+    bookDeleteDialog.close();
+    setBookDeleteError("");
+    bookDeleteStatus.hidden = true;
+
+    if (restoreFocus && deleteDialogReturnFocus?.isConnected) {
+        deleteDialogReturnFocus.focus();
+    }
+
+    deleteDialogReturnFocus = null;
+}
+
+async function deleteBook(bookId) {
+    const bookApiUrl = getBookApiUrl(bookId);
+    const response = await fetch(bookApiUrl, { method: "DELETE" });
+
+    if (!response.ok) {
+        const error = new Error(`DELETE ${bookApiUrl} failed: ${response.status}`);
+
+        error.status = response.status;
+        error.apiMessage = await readApiErrorMessage(response);
+        throw error;
+    }
+}
+
+function getDeleteFailureMessage(error) {
+    if (error.status === 404) {
+        return "この本はすでに存在しない可能性があります。一覧を更新してから再度お試しください。";
+    }
+
+    if (error.status === 400 && error.apiMessage) {
+        return `本を削除できませんでした。${error.apiMessage}`;
+    }
+
+    return "本を削除できませんでした。時間をおいて再度お試しください。";
+}
+
+async function confirmBookDeletion() {
+    if (isDeletingBook || currentBookDetail === null || editingBookId !== null) {
+        return;
+    }
+
+    const bookId = String(currentBookDetail.id);
+    let bookDeleted = false;
+
+    setBookDeleteError("");
+    setBookDeletingState(true);
+
+    try {
+        await deleteBook(bookId);
+        bookDeleted = true;
+
+        const books = await fetchBooks();
+
+        renderBooks(books);
+        updateResultCount(books.length);
+        setBookDeletingState(false);
+        closeBookDeleteDialog(false);
+        closeBookDetailPanel();
+        bookList.querySelector(".book-card")?.focus();
+    } catch (error) {
+        console.error(
+            bookDeleted
+                ? "本の削除後に一覧を再取得できませんでした。"
+                : "本を削除できませんでした。",
+            error
+        );
+        setBookDeletingState(false);
+
+        if (bookDeleted) {
+            closeBookDeleteDialog(false);
+            closeBookDetailPanel();
+            showListMessage(
+                "本は削除されましたが、一覧の最新情報を取得できませんでした。ページを再読み込みしてください。",
+                "error"
+            );
+            updateResultCount(null);
+            return;
+        }
+
+        setBookDeleteError(getDeleteFailureMessage(error));
+        bookDeleteConfirmButton.focus();
     }
 }
 
@@ -1562,7 +1699,36 @@ bookDetailCancelButton.addEventListener("click", () => {
     cancelBookEditing();
 });
 
+bookDeleteCancelButton.addEventListener("click", () => {
+    closeBookDeleteDialog();
+});
+
+bookDeleteConfirmButton.addEventListener("click", () => {
+    confirmBookDeletion();
+});
+
+bookDeleteDialog.addEventListener("cancel", (event) => {
+    event.preventDefault();
+    closeBookDeleteDialog();
+});
+
+bookDeleteDialog.addEventListener("click", (event) => {
+    const dialogBounds = bookDeleteDialog.getBoundingClientRect();
+    const clickedOutsideDialog = event.clientX < dialogBounds.left
+        || event.clientX > dialogBounds.right
+        || event.clientY < dialogBounds.top
+        || event.clientY > dialogBounds.bottom;
+
+    if (clickedOutsideDialog) {
+        closeBookDeleteDialog();
+    }
+});
+
 document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && bookDeleteDialog.open) {
+        return;
+    }
+
     if (event.key === "Escape" && !bookDetailPanel.hidden) {
         requestCloseBookDetailPanel(true);
     }

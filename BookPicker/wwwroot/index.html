@@ -157,6 +157,24 @@
         </aside>
     </main>
 
+    <dialog
+        id="book-delete-dialog"
+        class="delete-dialog"
+        aria-labelledby="book-delete-heading"
+        aria-describedby="book-delete-warning book-delete-error"
+        aria-busy="false">
+        <section class="delete-dialog__surface">
+            <h2 id="book-delete-heading"></h2>
+            <p id="book-delete-warning" class="delete-dialog__warning">この操作は取り消せません。</p>
+            <p id="book-delete-error" class="delete-dialog__error" role="alert" hidden></p>
+            <p id="book-delete-status" class="delete-dialog__status" role="status" hidden>削除しています…</p>
+            <div class="delete-dialog__actions">
+                <button id="book-delete-cancel" class="delete-dialog__cancel" type="button">キャンセル</button>
+                <button id="book-delete-confirm" class="delete-dialog__confirm" type="button">削除する</button>
+            </div>
+        </section>
+    </dialog>
+
     <script src="js/app.js"></script>
 </body>
 </html>
