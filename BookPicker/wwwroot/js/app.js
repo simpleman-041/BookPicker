@@ -185,6 +185,9 @@ let favoriteUpdateBookId = null;
 let deleteDialogReturnFocus = null;
 let isSearchingBooks = false;
 let bookListQueryRequestId = 0;
+let detailPanelCloseCleanup = null;
+let bookListLayoutAnimationFrame = null;
+const bookListLayoutAnimationCleanups = new Set();
 let bookListQueryState = {
     searchTitle: "",
     titleMatchMode: TITLE_MATCH_MODE_QUERY_VALUES.partial,
@@ -1398,9 +1401,151 @@ function createBookCreationForm() {
     return form;
 }
 
+function captureBookCardLayout() {
+    const cardLayout = new Map();
+
+    for (const item of bookList.querySelectorAll(".book-grid__item")) {
+        const bookId = item.querySelector(".book-card")?.dataset.bookId;
+
+        if (bookId !== undefined) {
+            cardLayout.set(bookId, item.getBoundingClientRect());
+        }
+    }
+
+    return cardLayout;
+}
+
+function cancelBookListLayoutAnimation() {
+    if (bookListLayoutAnimationFrame !== null) {
+        cancelAnimationFrame(bookListLayoutAnimationFrame);
+        bookListLayoutAnimationFrame = null;
+    }
+
+    for (const cleanup of [...bookListLayoutAnimationCleanups]) {
+        cleanup();
+    }
+}
+
+function animateBookListLayout(isPanelOpen, onPlay) {
+    const firstLayout = captureBookCardLayout();
+
+    cancelBookListLayoutAnimation();
+    workspace.classList.toggle("workspace--detail-open", isPanelOpen);
+
+    const lastLayout = captureBookCardLayout();
+    const animatedItems = [];
+
+    for (const item of bookList.querySelectorAll(".book-grid__item")) {
+        const bookId = item.querySelector(".book-card")?.dataset.bookId;
+        const firstRect = bookId === undefined ? null : firstLayout.get(bookId);
+
+        if (firstRect === null || firstRect === undefined) {
+            continue;
+        }
+
+        const lastRect = bookId === undefined ? null : lastLayout.get(bookId);
+
+        if (lastRect === null || lastRect === undefined) {
+            continue;
+        }
+
+        const translateX = firstRect.left - lastRect.left;
+        const translateY = firstRect.top - lastRect.top;
+
+        if (Math.abs(translateX) < 0.5 && Math.abs(translateY) < 0.5) {
+            continue;
+        }
+
+        item.classList.add("book-grid__item--layout-animating");
+        item.style.transition = "none";
+        item.style.transform = `translate(${translateX}px, ${translateY}px)`;
+        animatedItems.push(item);
+    }
+
+    bookList.getBoundingClientRect();
+
+    bookListLayoutAnimationFrame = requestAnimationFrame(() => {
+        bookListLayoutAnimationFrame = null;
+        onPlay();
+
+        for (const item of animatedItems) {
+            const finishAnimation = (event) => {
+                if (event.target !== item || event.propertyName !== "transform") {
+                    return;
+                }
+
+                cleanup();
+            };
+            const cleanup = () => {
+                item.removeEventListener("transitionend", finishAnimation);
+                item.removeEventListener("transitioncancel", finishAnimation);
+                item.classList.remove("book-grid__item--layout-animating");
+                item.style.removeProperty("transition");
+                item.style.removeProperty("transform");
+                bookListLayoutAnimationCleanups.delete(cleanup);
+            };
+
+            bookListLayoutAnimationCleanups.add(cleanup);
+            item.addEventListener("transitionend", finishAnimation);
+            item.addEventListener("transitioncancel", finishAnimation);
+            item.style.removeProperty("transition");
+            item.style.removeProperty("transform");
+        }
+    });
+}
+
 function openBookDetailPanel() {
+    if (detailPanelCloseCleanup !== null) {
+        detailPanelCloseCleanup();
+        detailPanelCloseCleanup = null;
+    }
+
+    if (!bookDetailPanel.hidden
+        && bookDetailPanel.classList.contains("detail-panel--open")) {
+        return;
+    }
+
     bookDetailPanel.hidden = false;
-    workspace.classList.add("workspace--detail-open");
+    bookDetailPanel.classList.remove("detail-panel--open");
+    animateBookListLayout(true, () => {
+        bookDetailPanel.classList.add("detail-panel--open");
+    });
+}
+
+function closeBookDetailPanelWithAnimation(onClosed) {
+    if (bookDetailPanel.hidden || detailPanelCloseCleanup !== null) {
+        return;
+    }
+
+    if (!bookDetailPanel.classList.contains("detail-panel--open")) {
+        cancelBookListLayoutAnimation();
+        workspace.classList.remove("workspace--detail-open");
+        bookDetailPanel.hidden = true;
+        onClosed();
+        return;
+    }
+
+    const finishClosing = (event) => {
+        if (event.target !== bookDetailPanel || event.propertyName !== "transform") {
+            return;
+        }
+
+        detailPanelCloseCleanup();
+        detailPanelCloseCleanup = null;
+
+        if (!bookDetailPanel.classList.contains("detail-panel--open")) {
+            bookDetailPanel.hidden = true;
+            onClosed();
+        }
+    };
+
+    detailPanelCloseCleanup = () => {
+        bookDetailPanel.removeEventListener("transitionend", finishClosing);
+    };
+    bookDetailPanel.addEventListener("transitionend", finishClosing);
+    animateBookListLayout(false, () => {
+        bookDetailPanel.classList.remove("detail-panel--open");
+    });
 }
 
 function setDetailActionsUnavailable() {
@@ -1660,15 +1805,16 @@ function closeBookDetailPanel(restoreCardFocus = false) {
         bookDetailAbortController = null;
     }
 
-    bookDetailPanel.hidden = true;
     bookDetailPanel.setAttribute("aria-busy", "false");
-    bookDetailContent.replaceChildren();
-    workspace.classList.remove("workspace--detail-open");
     currentBookDetail = null;
     clearEditingState();
     clearCreatingState();
-    setDetailActionsUnavailable();
     setSelectedBook(null);
+
+    closeBookDetailPanelWithAnimation(() => {
+        bookDetailContent.replaceChildren();
+        setDetailActionsUnavailable();
+    });
 
     if (restoreCardFocus && selectedCard !== null) {
         selectedCard.focus();
