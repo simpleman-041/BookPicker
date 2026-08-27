@@ -8,7 +8,18 @@
 </head>
 <body>
     <header class="app-header">
-        <div class="app-header__brand" aria-label="Yondoku ホーム">Yondoku</div>
+        <div class="app-header__brand-group">
+            <div class="app-header__brand" aria-label="Yondoku ホーム">Yondoku</div>
+            <button
+                id="help-button"
+                class="help-button"
+                type="button"
+                aria-label="使い方を表示"
+                aria-controls="help-panel"
+                aria-expanded="false">
+                <span aria-hidden="true">?</span>
+            </button>
+        </div>
 
         <div class="search-controls">
             <form id="title-search-form" class="title-search" role="search" aria-label="タイトル検索">
@@ -21,7 +32,7 @@
                     autocomplete="off"
                     maxlength="100" />
                 <button id="title-search-button" class="icon-button" type="submit" aria-label="タイトルを検索">
-                    <span aria-hidden="true"></span>
+                    <img class="title-search__icon" src="images/search-icon.png" alt="" aria-hidden="true" />
                 </button>
             </form>
 
@@ -38,13 +49,15 @@
             </fieldset>
         </div>
 
-        <button
-            id="add-book-button"
-            class="primary-button"
-            type="button"
-            aria-controls="book-detail-panel">
-            ＋ 本を追加
-        </button>
+        <div class="app-header__actions">
+            <button
+                id="add-book-button"
+                class="primary-button"
+                type="button"
+                aria-controls="book-detail-panel">
+                ＋ 本を追加
+            </button>
+        </div>
     </header>
 
     <nav class="quick-filters" aria-label="クイック条件">
@@ -181,6 +194,90 @@
             <div id="book-detail-content" class="detail-panel__content" aria-live="polite"></div>
         </aside>
     </main>
+
+    <aside
+        id="help-panel"
+        class="help-panel"
+        aria-labelledby="help-panel-heading"
+        tabindex="-1"
+        hidden>
+        <header class="help-panel__header">
+            <h2 id="help-panel-heading">使い方</h2>
+            <button
+                id="help-panel-close"
+                class="icon-button help-panel__close"
+                type="button"
+                aria-label="使い方パネルを閉じる">
+                ×
+            </button>
+        </header>
+
+        <div class="help-panel__content">
+            <section class="help-panel__section help-panel__section--introduction">
+                <h3>Yondokuについて</h3>
+                <p>積読している本を登録し、進捗や興味に応じて、次に読む本を探しやすくするアプリです。</p>
+            </section>
+
+            <section class="help-panel__section">
+                <h3>基本的な使い方</h3>
+                <div class="help-panel__item">
+                    <h4>本を追加</h4>
+                    <p>「本を追加」から、タイトル、総ページ数、ジャンル、興味レベルなどを登録できます。表紙画像も任意で設定できます。</p>
+                </div>
+                <div class="help-panel__item">
+                    <h4>進捗を更新</h4>
+                    <p>本を選択すると詳細が表示されます。現在ページを入力して更新すると、進捗と読書状態が自動的に更新されます。</p>
+                </div>
+                <div class="help-panel__item">
+                    <h4>本を探す</h4>
+                    <p>タイトル検索、詳細フィルター、クイック条件を組み合わせて本を探せます。</p>
+                </div>
+            </section>
+
+            <section class="help-panel__section">
+                <h3>興味レベル</h3>
+                <p>その本をどのくらい読みたいかを表します。興味レベルが高い本ほど「興味のある順」で上位に表示されます。</p>
+            </section>
+
+            <section class="help-panel__section">
+                <h3>読書状態</h3>
+                <p>現在ページと総ページ数から自動的に決まる状態です。読書状態そのものを直接入力することはできません。</p>
+                <ol class="help-panel__status-list" aria-label="読書状態の流れ">
+                    <li>未着手</li>
+                    <li>序盤</li>
+                    <li>中盤</li>
+                    <li>終盤</li>
+                    <li>読了</li>
+                </ol>
+            </section>
+
+            <section class="help-panel__section">
+                <h3>読了</h3>
+                <p>本を最後まで読み終えた状態です。「読了にする」を選択すると、その本を読了として扱い、現在ページも総ページ数まで進みます。読了解除も可能です。</p>
+            </section>
+
+            <section class="help-panel__section">
+                <h3>クイック条件</h3>
+                <dl class="help-panel__quick-filters">
+                    <div><dt>興味のある順</dt><dd>興味レベルが高い本から表示します。</dd></div>
+                    <div><dt>もう少しで読了</dt><dd>終盤まで読み進めている本を表示します。</dd></div>
+                    <div><dt>たっぷり読む</dt><dd>ページ数の多い本から表示します。</dd></div>
+                    <div><dt>短めに読む</dt><dd>ページ数の少ない本から表示します。</dd></div>
+                    <div><dt>最近読んだ</dt><dd>最後に読み進めた日時が新しい本から表示します。</dd></div>
+                </dl>
+            </section>
+
+            <section class="help-panel__section">
+                <h3>お気に入り</h3>
+                <p>星を押すと本をお気に入りにできます。上部の「お気に入り」を使うと、お気に入りにした本だけを表示できます。他の検索やフィルターとも組み合わせられます。</p>
+            </section>
+
+            <section class="help-panel__section">
+                <h3>表紙</h3>
+                <p>表紙画像をクリックすると、自分の画像へ変更できます。編集時や新規登録時にも表紙を選択できます。</p>
+            </section>
+        </div>
+    </aside>
 
     <dialog
         id="book-delete-dialog"

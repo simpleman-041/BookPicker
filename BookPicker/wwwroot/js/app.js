@@ -69,6 +69,9 @@ const quickFilterButtons = document.querySelectorAll("[data-quick-filter]");
 const favoriteFilterButton = document.getElementById("favorite-filter");
 const bookListActionError = document.getElementById("book-list-action-error");
 const workspace = document.querySelector(".workspace");
+const helpButton = document.getElementById("help-button");
+const helpPanel = document.getElementById("help-panel");
+const helpPanelCloseButton = document.getElementById("help-panel-close");
 const addBookButton = document.getElementById("add-book-button");
 const bookDetailPanel = document.getElementById("book-detail-panel");
 const bookDetailHeading = document.getElementById("detail-panel-heading");
@@ -186,6 +189,8 @@ let deleteDialogReturnFocus = null;
 let isSearchingBooks = false;
 let bookListQueryRequestId = 0;
 let detailPanelCloseCleanup = null;
+let helpPanelCloseCleanup = null;
+let helpPanelAnimationFrame = null;
 let bookListLayoutAnimationFrame = null;
 const bookListLayoutAnimationCleanups = new Set();
 let bookListQueryState = {
@@ -1492,6 +1497,79 @@ function animateBookListLayout(isPanelOpen, onPlay) {
             item.style.removeProperty("transform");
         }
     });
+}
+
+function cancelHelpPanelOpenAnimation() {
+    if (helpPanelAnimationFrame !== null) {
+        cancelAnimationFrame(helpPanelAnimationFrame);
+        helpPanelAnimationFrame = null;
+    }
+}
+
+function openHelpPanel() {
+    cancelHelpPanelOpenAnimation();
+
+    if (helpPanelCloseCleanup !== null) {
+        helpPanelCloseCleanup();
+        helpPanelCloseCleanup = null;
+    }
+
+    if (!helpPanel.hidden && helpPanel.classList.contains("help-panel--open")) {
+        helpPanelCloseButton.focus({ preventScroll: true });
+        return;
+    }
+
+    helpPanel.hidden = false;
+    helpPanel.classList.remove("help-panel--open");
+    helpButton.setAttribute("aria-expanded", "true");
+    helpPanelAnimationFrame = requestAnimationFrame(() => {
+        helpPanelAnimationFrame = null;
+
+        if (!helpPanel.hidden) {
+            helpPanel.classList.add("help-panel--open");
+        }
+    });
+    helpPanelCloseButton.focus({ preventScroll: true });
+}
+
+function closeHelpPanel(restoreButtonFocus = true) {
+    if (helpPanel.hidden || helpPanelCloseCleanup !== null) {
+        return;
+    }
+
+    cancelHelpPanelOpenAnimation();
+    helpButton.setAttribute("aria-expanded", "false");
+
+    const finishClosing = (event) => {
+        if (event.target !== helpPanel || event.propertyName !== "transform") {
+            return;
+        }
+
+        helpPanelCloseCleanup();
+        helpPanelCloseCleanup = null;
+        helpPanel.hidden = true;
+
+        if (restoreButtonFocus) {
+            helpButton.focus({ preventScroll: true });
+        }
+    };
+
+    if (!helpPanel.classList.contains("help-panel--open")) {
+        helpPanel.hidden = true;
+
+        if (restoreButtonFocus) {
+            helpButton.focus({ preventScroll: true });
+        }
+        return;
+    }
+
+    helpPanelCloseCleanup = () => {
+        helpPanel.removeEventListener("transitionend", finishClosing);
+        helpPanel.removeEventListener("transitioncancel", finishClosing);
+    };
+    helpPanel.addEventListener("transitionend", finishClosing);
+    helpPanel.addEventListener("transitioncancel", finishClosing);
+    helpPanel.classList.remove("help-panel--open");
 }
 
 function openBookDetailPanel() {
@@ -3321,13 +3399,19 @@ function renderBooks(books) {
 
 function updateBookList(books) {
     renderBooks(books);
-    updateResultCount(books.length);
+    updateResultCount(books);
 }
 
-function updateResultCount(count) {
-    bookResultCount.textContent = count === null
-        ? "表示件数: 取得失敗"
-        : `表示件数: ${count}冊`;
+function updateResultCount(books) {
+    if (books === null) {
+        bookResultCount.textContent = "表示件数: 取得失敗";
+        return;
+    }
+
+    const count = books.length;
+    const completedCount = books.filter((book) => book.isCompleted === true).length;
+
+    bookResultCount.textContent = `表示件数: ${count}冊　読了: ${completedCount}冊`;
 }
 
 populateDetailedFilterOptions(interestLevelFilter, INTEREST_LEVEL_LABELS);
@@ -3359,6 +3443,14 @@ for (const quickFilterButton of quickFilterButtons) {
 
 favoriteFilterButton.addEventListener("click", () => {
     searchBooksByFavoriteFilter();
+});
+
+helpButton.addEventListener("click", () => {
+    openHelpPanel();
+});
+
+helpPanelCloseButton.addEventListener("click", () => {
+    closeHelpPanel();
 });
 
 addBookButton.addEventListener("click", () => {
@@ -3419,6 +3511,12 @@ bookDeleteDialog.addEventListener("click", (event) => {
 
 document.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && bookDeleteDialog.open) {
+        return;
+    }
+
+    if (event.key === "Escape" && !helpPanel.hidden) {
+        event.preventDefault();
+        closeHelpPanel();
         return;
     }
 

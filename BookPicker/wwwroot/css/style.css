@@ -65,6 +65,7 @@ select:focus-visible {
 
 .app-header {
     min-height: var(--header-height);
+    position: relative;
     display: grid;
     grid-template-columns: minmax(10rem, 1fr) minmax(32rem, 46rem) minmax(9rem, 1fr);
     align-items: center;
@@ -72,6 +73,24 @@ select:focus-visible {
     padding: 0.75rem clamp(1.25rem, 3vw, 4rem);
     background: var(--color-surface);
     border-bottom: 1px solid var(--color-border);
+}
+
+.app-header::after {
+    content: "";
+    width: calc(100vw - 100%);
+    position: absolute;
+    top: 0;
+    right: calc(100% - 100vw);
+    bottom: 0;
+    pointer-events: none;
+    background: var(--color-surface);
+    border-bottom: 1px solid var(--color-border);
+}
+
+.app-header__brand-group {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
 }
 
 .app-header__brand {
@@ -136,25 +155,11 @@ select:focus-visible {
     opacity: 0.55;
 }
 
-.title-search .icon-button span {
-    position: relative;
-    width: 1.05rem;
-    height: 1.05rem;
+.title-search__icon {
+    width: 1.4rem;
+    height: 1.4rem;
     display: block;
-    border: 2px solid currentColor;
-    border-radius: 50%;
-}
-
-.title-search .icon-button span::after {
-    content: "";
-    position: absolute;
-    right: -0.45rem;
-    bottom: -0.25rem;
-    width: 0.55rem;
-    height: 2px;
-    background: currentColor;
-    transform: rotate(45deg);
-    transform-origin: left center;
+    object-fit: contain;
 }
 
 .match-mode {
@@ -212,6 +217,35 @@ select:focus-visible {
 .primary-button:disabled {
     cursor: not-allowed;
     opacity: 0.65;
+}
+
+.app-header__actions {
+    justify-self: end;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.help-button {
+    width: 2.5rem;
+    height: 2.5rem;
+    display: inline-grid;
+    place-items: center;
+    padding: 0;
+    color: var(--color-muted);
+    font-size: 1.2rem;
+    font-weight: 800;
+    line-height: 1;
+    background: var(--color-surface);
+    border: 1px solid #a9afa9;
+    border-radius: 50%;
+}
+
+.help-button:hover,
+.help-button[aria-expanded="true"] {
+    color: var(--color-accent-dark);
+    background: var(--color-accent-soft);
+    border-color: var(--color-accent);
 }
 
 .quick-filters {
@@ -704,6 +738,154 @@ select:focus-visible {
 
 .detail-panel__content {
     padding-top: 1.5rem;
+}
+
+.help-panel {
+    width: clamp(22rem, 30vw, 30rem);
+    max-width: 100%;
+    height: 100vh;
+    height: 100dvh;
+    min-width: 0;
+    position: fixed;
+    top: 0;
+    right: 0;
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: var(--color-surface);
+    border-left: 1px solid var(--color-border);
+    box-shadow: -0.5rem 0 1.5rem rgba(31, 42, 35, 0.14);
+    opacity: 0;
+    pointer-events: none;
+    transform: translateX(100%);
+    visibility: hidden;
+    transition:
+        transform 225ms ease-in-out,
+        opacity 225ms ease-in-out,
+        visibility 0s linear 225ms;
+}
+
+.help-panel[hidden] {
+    display: none;
+}
+
+.help-panel.help-panel--open {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translateX(0);
+    visibility: visible;
+    transition-delay: 0s;
+}
+
+.help-panel__header {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1.5rem clamp(1.25rem, 2vw, 1.75rem) 1rem;
+    border-bottom: 1px solid var(--color-border);
+}
+
+.help-panel__header h2 {
+    margin: 0;
+    font-size: 1.375rem;
+}
+
+.help-panel__close {
+    width: 2.5rem;
+    height: 2.5rem;
+    flex: 0 0 auto;
+    font-size: 1.5rem;
+    border-radius: 50%;
+}
+
+.help-panel__close:hover {
+    background: var(--color-canvas);
+}
+
+.help-panel__content {
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 1.5rem clamp(1.25rem, 2vw, 1.75rem) 2rem;
+}
+
+.help-panel__section + .help-panel__section {
+    padding-top: 1.25rem;
+    margin-top: 1.25rem;
+    border-top: 1px solid var(--color-border);
+}
+
+.help-panel__section h3,
+.help-panel__item h4 {
+    margin: 0;
+    color: var(--color-ink);
+}
+
+.help-panel__section h3 {
+    font-size: 1rem;
+}
+
+.help-panel__section p,
+.help-panel__quick-filters dd {
+    margin: 0.55rem 0 0;
+    color: var(--color-muted);
+    font-size: 0.9rem;
+    line-height: 1.65;
+}
+
+.help-panel__section--introduction h3 {
+    font-size: 1.25rem;
+}
+
+.help-panel__item + .help-panel__item {
+    margin-top: 1rem;
+}
+
+.help-panel__item {
+    padding-left: 0.8rem;
+    margin-top: 1rem;
+    border-left: 3px solid var(--color-accent-soft);
+}
+
+.help-panel__item h4,
+.help-panel__quick-filters dt {
+    font-size: 0.9rem;
+}
+
+.help-panel__status-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+    padding: 0;
+    margin: 0.8rem 0 0;
+    list-style: none;
+}
+
+.help-panel__status-list li {
+    padding: 0.3rem 0.55rem;
+    color: var(--color-accent-dark);
+    font-size: 0.8rem;
+    font-weight: 700;
+    background: var(--color-accent-soft);
+    border-radius: 999px;
+}
+
+.help-panel__quick-filters {
+    display: grid;
+    gap: 0.85rem;
+    margin: 0.9rem 0 0;
+}
+
+.help-panel__quick-filters div {
+    padding-left: 0.8rem;
+    border-left: 3px solid var(--color-accent-soft);
+}
+
+.help-panel__quick-filters dd {
+    margin-top: 0.2rem;
 }
 
 .detail-panel__message {
@@ -1392,7 +1574,7 @@ select:focus-visible {
         justify-content: center;
     }
 
-    .primary-button {
+    .app-header__actions {
         grid-column: 3;
     }
 
@@ -1421,7 +1603,7 @@ select:focus-visible {
         justify-content: flex-start;
     }
 
-    .primary-button {
+    .app-header__actions {
         grid-column: 2;
         grid-row: 1;
     }
@@ -1439,6 +1621,11 @@ select:focus-visible {
     }
 
     .detail-panel {
+        transition-duration: 1ms, 1ms, 0s;
+        transition-delay: 0ms, 0ms, 1ms;
+    }
+
+    .help-panel {
         transition-duration: 1ms, 1ms, 0s;
         transition-delay: 0ms, 0ms, 1ms;
     }
