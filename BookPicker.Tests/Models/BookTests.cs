@@ -212,6 +212,28 @@ public class BookTests
     }
 
     [Fact]
+    public void Constructor_InitializesIsFavoriteToFalse()
+    {
+        var book = CreateBook();
+
+        Assert.False(book.IsFavorite);
+    }
+
+    [Fact]
+    public void SetIsFavorite_ChangesFavoriteStateInBothDirections()
+    {
+        var book = CreateBook();
+
+        book.SetIsFavorite(true);
+
+        Assert.True(book.IsFavorite);
+
+        book.SetIsFavorite(false);
+
+        Assert.False(book.IsFavorite);
+    }
+
+    [Fact]
     public void UpdateCurrentPageAndReadingStatus_WhenCurrentPageIncreases_SetsCurrentUtcTimeAsLastReadAt()
     {
         var beforeUpdate = DateTime.UtcNow;

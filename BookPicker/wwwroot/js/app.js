@@ -287,16 +287,16 @@ function getSelectedTitleMatchMode() {
         ?? TITLE_MATCH_MODE_QUERY_VALUES.partial;
 }
 
-function createTitleSearchQueryState() {
-    const searchTitle = titleSearchInput.value.trim();
-
-    titleSearchInput.value = searchTitle;
-
+function syncTitleSearchQueryState(queryState) {
     return {
-        ...bookListQueryState,
-        searchTitle,
+        ...queryState,
+        searchTitle: titleSearchInput.value.trim(),
         titleMatchMode: getSelectedTitleMatchMode()
     };
+}
+
+function createTitleSearchQueryState() {
+    return syncTitleSearchQueryState(bookListQueryState);
 }
 
 function createDetailedFilterQueryState(changedFilter) {
@@ -306,7 +306,7 @@ function createDetailedFilterQueryState(changedFilter) {
         ? readingStatusFilter.value
         : bookListQueryState.readingStatus;
 
-    return {
+    return syncTitleSearchQueryState({
         ...bookListQueryState,
         interestLevel: interestLevelFilter.value,
         genre: genreFilter.value,
@@ -323,13 +323,13 @@ function createDetailedFilterQueryState(changedFilter) {
         sortOrder: readingStatusWasChanged && nearlyFinishedWasSelected
             ? ""
             : bookListQueryState.sortOrder
-    };
+    });
 }
 
 function createDetailedFilterResetQueryState() {
     const nearlyFinishedIsSelected = bookListQueryState.quickFilter === "nearly-finished";
 
-    return {
+    return syncTitleSearchQueryState({
         ...bookListQueryState,
         interestLevel: "",
         genre: "",
@@ -337,14 +337,14 @@ function createDetailedFilterResetQueryState() {
         readingStatus: nearlyFinishedIsSelected
             ? READING_STATUS_QUERY_VALUES.lateStage
             : ""
-    };
+    });
 }
 
 function createQuickFilterQueryState(quickFilter) {
     const quickFilterDefinition = QUICK_FILTERS[quickFilter] ?? QUICK_FILTERS.all;
     const nearlyFinishedWasSelected = bookListQueryState.quickFilter === "nearly-finished";
 
-    return {
+    return syncTitleSearchQueryState({
         ...bookListQueryState,
         quickFilter: QUICK_FILTERS[quickFilter] === undefined ? "all" : quickFilter,
         readingStatus: quickFilterDefinition.readingStatus
@@ -353,14 +353,14 @@ function createQuickFilterQueryState(quickFilter) {
                 : bookListQueryState.readingStatus),
         sortField: quickFilterDefinition.sortField,
         sortOrder: quickFilterDefinition.sortOrder
-    };
+    });
 }
 
 function createFavoriteFilterQueryState() {
-    return {
+    return syncTitleSearchQueryState({
         ...bookListQueryState,
         isFavorite: !bookListQueryState.isFavorite
-    };
+    });
 }
 
 function syncTitleSearchControls(queryState) {
@@ -502,6 +502,7 @@ async function searchBooksByFavoriteFilter() {
 
 async function applyBookListQueryState(nextQueryState, failureMessage, discardMessage) {
     const previousQueryState = { ...bookListQueryState };
+    nextQueryState = syncTitleSearchQueryState(nextQueryState);
     const requestId = ++bookListQueryRequestId;
 
     bookListQueryState = nextQueryState;
@@ -526,6 +527,7 @@ async function applyBookListQueryState(nextQueryState, failureMessage, discardMe
 
             bookListQueryState = previousQueryState;
             syncBookListQueryControls(previousQueryState);
+            syncTitleSearchControls(syncTitleSearchQueryState(previousQueryState));
             return;
         }
 

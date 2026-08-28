@@ -85,6 +85,32 @@ public class BooksControllerTests
         Assert.Null(book.CoverImagePath);
     }
 
+    [Fact]
+    public async Task UploadCover_WithFileOfExactlyFiveMegabytes_AcceptsTheFile()
+    {
+        using var database = new TestDatabase();
+        var book = database.AddBook();
+        var bytes = new byte[5 * 1024 * 1024];
+        using var stream = new MemoryStream(bytes);
+        var file = CreateFormFile(stream, "cover.jpg", "image/jpeg");
+
+        var result = await database.Controller.UploadCover(book.Id, file);
+
+        Assert.IsType<OkObjectResult>(result);
+        Assert.NotNull(book.CoverImagePath);
+        Assert.Equal(bytes.Length, new FileInfo(database.GetPhysicalPath(book.CoverImagePath)).Length);
+    }
+
+    [Fact]
+    public void UploadCover_HasRequestBodySizeLimit()
+    {
+        var action = typeof(BooksController).GetMethod(nameof(BooksController.UploadCover));
+        Assert.NotNull(action);
+
+        Assert.Single(
+            action.GetCustomAttributes(inherit: true).OfType<RequestSizeLimitAttribute>());
+    }
+
     [Theory]
     [InlineData(".jpg", "image/jpeg")]
     [InlineData(".jpeg", "image/jpeg")]
@@ -257,6 +283,7 @@ public class BooksControllerTests
         Assert.DoesNotContain(nameof(Book.ReadingStatus), propertyNames);
         Assert.DoesNotContain(nameof(Book.LastReadAt), propertyNames);
         Assert.DoesNotContain(nameof(Book.IsCompleted), propertyNames);
+        Assert.DoesNotContain(nameof(Book.IsFavorite), propertyNames);
     }
 
     [Fact]
@@ -375,6 +402,54 @@ public class BooksControllerTests
         var result = await database.Controller.UpdateCompletion(
             999,
             new UpdateCompletionRequest { IsCompleted = true });
+
+        Assert.IsType<NotFoundResult>(result);
+    }
+
+    [Fact]
+    public async Task UpdateFavorite_WithTrue_FavoritesBookAndPersistsResult()
+    {
+        using var database = new TestDatabase();
+        var book = database.AddBook();
+        var bookId = book.Id;
+
+        var result = await database.Controller.UpdateFavorite(
+            bookId,
+            new UpdateFavoriteRequest { IsFavorite = true });
+
+        Assert.IsType<NoContentResult>(result);
+        Assert.True(book.IsFavorite);
+
+        database.Context.ChangeTracker.Clear();
+        var reloadedBook = await database.Context.Books.FindAsync(bookId);
+        Assert.NotNull(reloadedBook);
+        Assert.True(reloadedBook.IsFavorite);
+    }
+
+    [Fact]
+    public async Task UpdateFavorite_WithFalse_RemovesBookFromFavorites()
+    {
+        using var database = new TestDatabase();
+        var book = database.AddBook();
+        book.SetIsFavorite(true);
+        await database.Context.SaveChangesAsync();
+
+        var result = await database.Controller.UpdateFavorite(
+            book.Id,
+            new UpdateFavoriteRequest { IsFavorite = false });
+
+        Assert.IsType<NoContentResult>(result);
+        Assert.False(book.IsFavorite);
+    }
+
+    [Fact]
+    public async Task UpdateFavorite_WithMissingId_ReturnsNotFound()
+    {
+        using var database = new TestDatabase();
+
+        var result = await database.Controller.UpdateFavorite(
+            999,
+            new UpdateFavoriteRequest { IsFavorite = true });
 
         Assert.IsType<NotFoundResult>(result);
     }
@@ -522,6 +597,77 @@ public class BooksControllerTests
         var ok = Assert.IsType<OkObjectResult>(result);
         var book = Assert.Single(Assert.IsAssignableFrom<IEnumerable<Book>>(ok.Value));
         Assert.Equal("Matching Science Book", book.Title);
+    }
+
+    [Fact]
+    public async Task FilterAndSort_WithIsFavoriteTrue_ReturnsOnlyFavoriteBooks()
+    {
+        using var database = new TestDatabase();
+        var favorite = database.AddBook(title: "Favorite");
+        database.AddBook(title: "Not Favorite");
+        favorite.SetIsFavorite(true);
+        await database.Context.SaveChangesAsync();
+
+        var result = await database.Controller.FilterAndSort(
+            new FilterRequest { IsFavorite = true },
+            new SortRequest());
+
+        var ok = Assert.IsType<OkObjectResult>(result);
+        var book = Assert.Single(Assert.IsAssignableFrom<IEnumerable<Book>>(ok.Value));
+        Assert.Equal(favorite.Id, book.Id);
+    }
+
+    [Fact]
+    public async Task FilterAndSort_WithFavoriteAndOtherFilters_AppliesConditionsWithAnd()
+    {
+        using var database = new TestDatabase();
+        var matchingFavorite = database.AddBook(
+            title: "Favorite Science Guide",
+            genre: Genre.Science,
+            interestLevel: InterestLevel.PrimaryInterest);
+        var nonFavoriteMatch = database.AddBook(
+            title: "Favorite Science Reference",
+            genre: Genre.Science,
+            interestLevel: InterestLevel.PrimaryInterest);
+        var favoriteWrongGenre = database.AddBook(
+            title: "Favorite Fiction Guide",
+            genre: Genre.Fiction,
+            interestLevel: InterestLevel.PrimaryInterest);
+        matchingFavorite.SetIsFavorite(true);
+        favoriteWrongGenre.SetIsFavorite(true);
+        await database.Context.SaveChangesAsync();
+
+        var result = await database.Controller.FilterAndSort(
+            new FilterRequest
+            {
+                IsFavorite = true,
+                Genre = Genre.Science,
+                InterestLevel = InterestLevel.HighlyInterested,
+                SearchTitle = "Guide",
+                TitleMatchMode = TitleMatchMode.Partial
+            },
+            new SortRequest());
+
+        var ok = Assert.IsType<OkObjectResult>(result);
+        var book = Assert.Single(Assert.IsAssignableFrom<IEnumerable<Book>>(ok.Value));
+        Assert.Equal(matchingFavorite.Id, book.Id);
+        Assert.NotEqual(nonFavoriteMatch.Id, book.Id);
+    }
+
+    [Fact]
+    public async Task FilterAndSort_WithoutFavoriteCondition_ReturnsFavoriteAndNonFavoriteBooks()
+    {
+        using var database = new TestDatabase();
+        var favorite = database.AddBook(title: "Favorite");
+        var nonFavorite = database.AddBook(title: "Not Favorite");
+        favorite.SetIsFavorite(true);
+        await database.Context.SaveChangesAsync();
+
+        var books = await GetBooks(database, new SortRequest());
+
+        Assert.Equal(
+            new[] { nonFavorite.Id, favorite.Id },
+            books.Select(book => book.Id));
     }
 
     [Fact]

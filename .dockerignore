@@ -1,0 +1,21 @@
+# Build output
+**/bin/
+**/obj/
+
+# Source-control and IDE files
+.git/
+.vs/
+**/*.user
+**/*.suo
+
+# Local databases and their SQLite sidecar files
+BookPicker/bookpicker.db
+BookPicker/bookpicker.db-shm
+BookPicker/bookpicker.db-wal
+BookPicker/*.backup.db*
+BookPicker/demo-bookpicker.db
+BookPicker/demo-bookpicker.db-shm
+BookPicker/demo-bookpicker.db-wal
+
+# Other local artifacts
+*.log

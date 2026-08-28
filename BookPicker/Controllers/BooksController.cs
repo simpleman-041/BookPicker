@@ -2,9 +2,11 @@
 using BookPicker.Models;
 using BookPicker.Requests;
 using BookPicker.Services;
+using BookPicker;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 
 namespace BookPicker.Controllers
@@ -17,6 +19,8 @@ namespace BookPicker.Controllers
         private readonly BookPickerDbContext _dbContext;
         private readonly string _webRootPath;
         private const long MaximumCoverFileSize = 5 * 1024 * 1024;
+        // Leave room for multipart boundaries and per-part headers around a 5 MiB file.
+        private const long MaximumCoverRequestBodySize = 6 * 1024 * 1024;
         private const string CoverUrlPrefix = "/uploads/covers/";
         private static readonly IReadOnlyDictionary<string, string> AllowedCoverContentTypes =
             new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
@@ -37,6 +41,7 @@ namespace BookPicker.Controllers
         }
 
         [HttpGet("{id}")]
+        [EnableRateLimiting(RateLimitPolicies.Read)]
         public async Task<IActionResult> GetBook(int id)
         {
             var book = await _dbContext.Books.FindAsync(id);
@@ -48,6 +53,7 @@ namespace BookPicker.Controllers
         }
 
         [HttpDelete("{id}")]
+        [EnableRateLimiting(RateLimitPolicies.Write)]
         public async Task<IActionResult> DeleteBook(int id)
         {
             var book = await _dbContext.Books.FindAsync(id);
@@ -61,6 +67,7 @@ namespace BookPicker.Controllers
         }
 
         [HttpPost]
+        [EnableRateLimiting(RateLimitPolicies.Write)]
         public async Task<IActionResult> CreateBook(CreateBookRequest createBookRequest)
         {
             try
@@ -85,6 +92,7 @@ namespace BookPicker.Controllers
         }
 
         [HttpPut("{id}")]
+        [EnableRateLimiting(RateLimitPolicies.Write)]
         public async Task<IActionResult> UpdateBook(int id, UpdateBookRequest updateBookRequest)
         {
             var book = await _dbContext.Books.FindAsync(id);
@@ -114,6 +122,8 @@ namespace BookPicker.Controllers
 
         [HttpPost("{id}/cover")]
         [Consumes("multipart/form-data")]
+        [RequestSizeLimit(MaximumCoverRequestBodySize)]
+        [EnableRateLimiting(RateLimitPolicies.CoverUpload)]
         public async Task<IActionResult> UploadCover(
             int id,
             [FromForm] IFormFile? file,
@@ -188,6 +198,7 @@ namespace BookPicker.Controllers
         }
 
         [HttpPut("{id}/completion")]
+        [EnableRateLimiting(RateLimitPolicies.Write)]
         public async Task<IActionResult> UpdateCompletion(int id, UpdateCompletionRequest updateCompletionRequest)
         {
             var book = await _dbContext.Books.FindAsync(id);
@@ -203,6 +214,7 @@ namespace BookPicker.Controllers
         }
 
         [HttpPut("{id}/favorite")]
+        [EnableRateLimiting(RateLimitPolicies.Write)]
         public async Task<IActionResult> UpdateFavorite(int id, UpdateFavoriteRequest updateFavoriteRequest)
         {
             var book = await _dbContext.Books.FindAsync(id);
@@ -218,6 +230,7 @@ namespace BookPicker.Controllers
         }
 
         [HttpPut("{id}/progress")]
+        [EnableRateLimiting(RateLimitPolicies.Write)]
         public async Task<IActionResult> UpdateCurrentPage(int id, UpdateCurrentPageRequest updateCurrentPageRequest)
         {
             var book = await _dbContext.Books.FindAsync(id);
@@ -247,6 +260,7 @@ namespace BookPicker.Controllers
         /// <param name="sortRequest">並び替え条件をまとめたオブジェクト</param>
         /// <returns></returns>
         [HttpGet]
+        [EnableRateLimiting(RateLimitPolicies.Read)]
         public async Task<IActionResult> FilterAndSort([FromQuery] FilterRequest filterRequest, [FromQuery] SortRequest sortRequest)
         {
             // 並び替え条件が無効な場合は DBアクセスを行わずに BadRequest を返す
