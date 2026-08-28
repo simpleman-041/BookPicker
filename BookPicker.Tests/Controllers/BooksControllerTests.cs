@@ -1,3 +1,4 @@
+using BookPicker;
 using BookPicker.Controllers;
 using BookPicker.Data;
 using BookPicker.Models;
@@ -5,6 +6,7 @@ using BookPicker.Requests;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.FileProviders;
@@ -90,7 +92,7 @@ public class BooksControllerTests
     {
         using var database = new TestDatabase();
         var book = database.AddBook();
-        var bytes = new byte[5 * 1024 * 1024];
+        var bytes = CreateImageBytes(".jpg", 5 * 1024 * 1024);
         using var stream = new MemoryStream(bytes);
         var file = CreateFormFile(stream, "cover.jpg", "image/jpeg");
 
@@ -111,6 +113,18 @@ public class BooksControllerTests
             action.GetCustomAttributes(inherit: true).OfType<RequestSizeLimitAttribute>());
     }
 
+    [Fact]
+    public void UploadCover_HasCoverUploadRateLimitPolicy()
+    {
+        var action = typeof(BooksController).GetMethod(nameof(BooksController.UploadCover));
+        Assert.NotNull(action);
+
+        var attribute = Assert.Single(
+            action.GetCustomAttributes(inherit: true).OfType<EnableRateLimitingAttribute>());
+
+        Assert.Equal(RateLimitPolicies.CoverUpload, attribute.PolicyName);
+    }
+
     [Theory]
     [InlineData(".jpg", "image/jpeg")]
     [InlineData(".jpeg", "image/jpeg")]
@@ -123,7 +137,7 @@ public class BooksControllerTests
         using var database = new TestDatabase();
         var book = database.AddBook(currentPage: 10);
         var previousLastReadAt = book.LastReadAt;
-        var originalBytes = new byte[] { 10, 20, 30, 40 };
+        var originalBytes = CreateImageBytes(extension);
         using var stream = new MemoryStream(originalBytes);
         var file = CreateFormFile(stream, $"user-supplied-name{extension}", contentType);
 
@@ -146,13 +160,59 @@ public class BooksControllerTests
     }
 
     [Fact]
+    public async Task UploadCover_WithTextDisguisedAsPng_ReturnsBadRequest()
+    {
+        using var database = new TestDatabase();
+        var book = database.AddBook();
+        using var stream = new MemoryStream("not an image"u8.ToArray());
+        var file = CreateFormFile(stream, "fake.png", "image/png");
+
+        var result = await database.Controller.UploadCover(book.Id, file);
+
+        var badRequest = Assert.IsType<BadRequestObjectResult>(result);
+        Assert.Equal("画像の内容がファイル形式と一致しません。", badRequest.Value);
+        Assert.Null(book.CoverImagePath);
+        Assert.False(Directory.Exists(database.CoversDirectoryPath));
+    }
+
+    [Fact]
+    public async Task UploadCover_WithPngNameAndContentTypeButJpegContent_ReturnsBadRequest()
+    {
+        using var database = new TestDatabase();
+        var book = database.AddBook();
+        using var stream = new MemoryStream(CreateImageBytes(".jpg"));
+        var file = CreateFormFile(stream, "cover.png", "image/png");
+
+        var result = await database.Controller.UploadCover(book.Id, file);
+
+        var badRequest = Assert.IsType<BadRequestObjectResult>(result);
+        Assert.Equal("画像の内容がファイル形式と一致しません。", badRequest.Value);
+        Assert.Null(book.CoverImagePath);
+    }
+
+    [Fact]
+    public async Task UploadCover_WithJpegNameAndContentTypeButPngContent_ReturnsBadRequest()
+    {
+        using var database = new TestDatabase();
+        var book = database.AddBook();
+        using var stream = new MemoryStream(CreateImageBytes(".png"));
+        var file = CreateFormFile(stream, "cover.jpg", "image/jpeg");
+
+        var result = await database.Controller.UploadCover(book.Id, file);
+
+        var badRequest = Assert.IsType<BadRequestObjectResult>(result);
+        Assert.Equal("画像の内容がファイル形式と一致しません。", badRequest.Value);
+        Assert.Null(book.CoverImagePath);
+    }
+
+    [Fact]
     public async Task UploadCover_WhenReplacingManagedCover_DeletesPreviousFileAfterUpdate()
     {
         using var database = new TestDatabase();
         var previousCoverPath = $"/uploads/covers/{Guid.NewGuid():N}.png";
         var previousPhysicalPath = database.CreateWebRootFile(previousCoverPath, [4, 5, 6]);
         var book = database.AddBook(coverImagePath: previousCoverPath);
-        using var stream = new MemoryStream([1, 2, 3]);
+        using var stream = new MemoryStream(CreateImageBytes(".png"));
         var file = CreateFormFile(stream, "replacement.png", "image/png");
 
         var result = await database.Controller.UploadCover(book.Id, file);
@@ -169,7 +229,7 @@ public class BooksControllerTests
         const string defaultCoverPath = "/images/default-book-cover.png";
         var defaultPhysicalPath = database.CreateWebRootFile(defaultCoverPath, [7, 8, 9]);
         var book = database.AddBook(coverImagePath: defaultCoverPath);
-        using var stream = new MemoryStream([1, 2, 3]);
+        using var stream = new MemoryStream(CreateImageBytes(".jpg"));
         var file = CreateFormFile(stream, "replacement.jpg", "image/jpeg");
 
         var result = await database.Controller.UploadCover(book.Id, file);
@@ -184,7 +244,7 @@ public class BooksControllerTests
         using var database = new TestDatabase();
         var outsidePhysicalPath = database.CreateWebRootFile("/images/external-sentinel.png", [7, 8, 9]);
         var book = database.AddBook(coverImagePath: "https://example.com/cover.png");
-        using var stream = new MemoryStream([1, 2, 3]);
+        using var stream = new MemoryStream(CreateImageBytes(".jpg"));
         var file = CreateFormFile(stream, "replacement.jpg", "image/jpeg");
 
         var result = await database.Controller.UploadCover(book.Id, file);
@@ -199,7 +259,7 @@ public class BooksControllerTests
         using var database = new TestDatabase();
         var protectedPhysicalPath = database.CreateWebRootFile("/uploads/protected.jpg", [7, 8, 9]);
         var book = database.AddBook(coverImagePath: "/uploads/covers/../protected.jpg");
-        using var stream = new MemoryStream([1, 2, 3]);
+        using var stream = new MemoryStream(CreateImageBytes(".jpg"));
         var file = CreateFormFile(stream, "replacement.jpg", "image/jpeg");
 
         var result = await database.Controller.UploadCover(book.Id, file);
@@ -737,6 +797,26 @@ public class BooksControllerTests
             Headers = new HeaderDictionary(),
             ContentType = contentType
         };
+    }
+
+    private static byte[] CreateImageBytes(string extension, int length = 0)
+    {
+        var signature = extension.ToLowerInvariant() switch
+        {
+            ".jpg" or ".jpeg" => new byte[] { 0xFF, 0xD8, 0xFF, 0xE0 },
+            ".png" => new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A },
+            ".webp" => "RIFF\0\0\0\0WEBP"u8.ToArray(),
+            _ => throw new ArgumentOutOfRangeException(nameof(extension))
+        };
+
+        if (length == 0)
+        {
+            return signature;
+        }
+
+        var imageBytes = new byte[length];
+        signature.CopyTo(imageBytes, 0);
+        return imageBytes;
     }
 
     private static UpdateBookRequest ValidUpdateRequest()

@@ -21,14 +21,17 @@ namespace BookPicker.Controllers
         private const long MaximumCoverFileSize = 5 * 1024 * 1024;
         // Leave room for multipart boundaries and per-part headers around a 5 MiB file.
         private const long MaximumCoverRequestBodySize = 6 * 1024 * 1024;
+        private const int MaximumCoverFileSignatureLength = 12;
         private const string CoverUrlPrefix = "/uploads/covers/";
-        private static readonly IReadOnlyDictionary<string, string> AllowedCoverContentTypes =
-            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        private static readonly byte[] PngFileSignature = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
+        private static readonly byte[] JpegFileSignature = [0xFF, 0xD8, 0xFF];
+        private static readonly IReadOnlyDictionary<string, CoverImageFormat> AllowedCoverImageFormats =
+            new Dictionary<string, CoverImageFormat>(StringComparer.OrdinalIgnoreCase)
             {
-                [".jpg"] = "image/jpeg",
-                [".jpeg"] = "image/jpeg",
-                [".png"] = "image/png",
-                [".webp"] = "image/webp"
+                [".jpg"] = CoverImageFormat.Jpeg,
+                [".jpeg"] = CoverImageFormat.Jpeg,
+                [".png"] = CoverImageFormat.Png,
+                [".webp"] = CoverImageFormat.WebP
             };
 
         public BooksController(BookPickerDbContext dbContext, IWebHostEnvironment webHostEnvironment)
@@ -135,7 +138,7 @@ namespace BookPicker.Controllers
                 return NotFound();
             }
 
-            var validationError = ValidateCoverFile(file);
+            var validationError = await ValidateCoverFileAsync(file, cancellationToken);
             if (validationError != null)
             {
                 return BadRequest(validationError);
@@ -306,7 +309,9 @@ namespace BookPicker.Controllers
             }
         }
 
-        private static string? ValidateCoverFile(IFormFile? file)
+        private static async Task<string?> ValidateCoverFileAsync(
+            IFormFile? file,
+            CancellationToken cancellationToken)
         {
             if (file == null || file.Length == 0)
             {
@@ -319,17 +324,90 @@ namespace BookPicker.Controllers
             }
 
             var extension = Path.GetExtension(file.FileName);
-            if (!AllowedCoverContentTypes.TryGetValue(extension, out var expectedContentType))
+            if (!AllowedCoverImageFormats.TryGetValue(extension, out var expectedImageFormat))
             {
                 return "対応していない画像形式です。.jpg、.jpeg、.png、.webp のいずれかを選択してください。";
             }
 
-            if (!string.Equals(file.ContentType, expectedContentType, StringComparison.OrdinalIgnoreCase))
+            if (!string.Equals(
+                    file.ContentType,
+                    GetContentType(expectedImageFormat),
+                    StringComparison.OrdinalIgnoreCase))
             {
                 return "画像のContent-Typeがファイル形式と一致しません。";
             }
 
+            await using var stream = file.OpenReadStream();
+            var header = new byte[MaximumCoverFileSignatureLength];
+            var bytesRead = await ReadHeaderAsync(stream, header, cancellationToken);
+
+            if (stream.CanSeek)
+            {
+                stream.Position = 0;
+            }
+
+            if (DetectCoverImageFormat(header.AsSpan(0, bytesRead)) != expectedImageFormat)
+            {
+                return "画像の内容がファイル形式と一致しません。";
+            }
+
             return null;
+        }
+
+        private static async Task<int> ReadHeaderAsync(
+            Stream stream,
+            Memory<byte> buffer,
+            CancellationToken cancellationToken)
+        {
+            var totalBytesRead = 0;
+
+            while (totalBytesRead < buffer.Length)
+            {
+                var bytesRead = await stream.ReadAsync(buffer[totalBytesRead..], cancellationToken);
+                if (bytesRead == 0)
+                {
+                    break;
+                }
+
+                totalBytesRead += bytesRead;
+            }
+
+            return totalBytesRead;
+        }
+
+        private static CoverImageFormat? DetectCoverImageFormat(ReadOnlySpan<byte> header)
+        {
+            if (header.Length >= 8
+                && header[..8].SequenceEqual(PngFileSignature))
+            {
+                return CoverImageFormat.Png;
+            }
+
+            if (header.Length >= 3
+                && header[..3].SequenceEqual(JpegFileSignature))
+            {
+                return CoverImageFormat.Jpeg;
+            }
+
+            if (header.Length >= 12
+                && header[..4].SequenceEqual("RIFF"u8)
+                && header[8..12].SequenceEqual("WEBP"u8))
+            {
+                return CoverImageFormat.WebP;
+            }
+
+            return null;
+        }
+
+        private static string GetContentType(CoverImageFormat imageFormat)
+        {
+            return imageFormat switch
+            {
+                CoverImageFormat.Jpeg => "image/jpeg",
+                CoverImageFormat.Png => "image/png",
+                CoverImageFormat.WebP => "image/webp",
+                _ => throw new ArgumentOutOfRangeException(nameof(imageFormat))
+            };
         }
 
         private string GetCoversDirectoryPath()
@@ -354,7 +432,7 @@ namespace BookPicker.Controllers
 
             var extension = Path.GetExtension(fileName);
             var generatedName = Path.GetFileNameWithoutExtension(fileName);
-            if (!AllowedCoverContentTypes.ContainsKey(extension)
+            if (!AllowedCoverImageFormats.ContainsKey(extension)
                 || !Guid.TryParseExact(generatedName, "N", out _))
             {
                 return null;
@@ -388,6 +466,13 @@ namespace BookPicker.Controllers
             {
                 // DB更新済みのため、古い表紙の削除失敗でアップロード結果を失敗扱いにしない。
             }
+        }
+
+        private enum CoverImageFormat
+        {
+            Jpeg,
+            Png,
+            WebP
         }
     }
 }
