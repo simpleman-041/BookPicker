@@ -64,8 +64,17 @@ namespace BookPicker.Controllers
             {
                 return NotFound();
             }
+
+            var coverImagePath = book.CoverImagePath;
             _dbContext.Books.Remove(book);
             await _dbContext.SaveChangesAsync();
+
+            var coverPhysicalPath = GetManagedCoverPhysicalPath(coverImagePath);
+            if (coverPhysicalPath != null)
+            {
+                TryDeleteFile(coverPhysicalPath);
+            }
+
             return NoContent();
         }
 
@@ -104,6 +113,8 @@ namespace BookPicker.Controllers
                 return NotFound();
             }
 
+            var previousCoverImagePath = book.CoverImagePath;
+
             try
             {
                 book.UpdateDetails(
@@ -120,6 +131,18 @@ namespace BookPicker.Controllers
             }
 
             await _dbContext.SaveChangesAsync();
+
+            var previousCoverPhysicalPath = GetManagedCoverPhysicalPath(previousCoverImagePath);
+            var currentCoverPhysicalPath = GetManagedCoverPhysicalPath(book.CoverImagePath);
+            if (previousCoverPhysicalPath != null
+                && !string.Equals(
+                    previousCoverPhysicalPath,
+                    currentCoverPhysicalPath,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                TryDeleteFile(previousCoverPhysicalPath);
+            }
+
             return NoContent();
         }
 

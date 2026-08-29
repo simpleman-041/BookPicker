@@ -269,6 +269,153 @@ public class BooksControllerTests
     }
 
     [Fact]
+    public async Task UploadCover_WhenDatabaseUpdateFails_PreservesPreviousCoverAndCleansUpNewFile()
+    {
+        using var database = new TestDatabase();
+        var previousCoverPath = $"/uploads/covers/{Guid.NewGuid():N}.png";
+        var previousPhysicalPath = database.CreateWebRootFile(previousCoverPath, [4, 5, 6]);
+        var book = database.AddBook(coverImagePath: previousCoverPath);
+        using var stream = new MemoryStream(CreateImageBytes(".png"));
+        var file = CreateFormFile(stream, "replacement.png", "image/png");
+        database.FailNextSaveChangesAsync();
+
+        await Assert.ThrowsAsync<DbUpdateException>(() => database.Controller.UploadCover(book.Id, file));
+
+        await database.Context.Entry(book).ReloadAsync();
+        Assert.Equal(previousCoverPath, book.CoverImagePath);
+        Assert.True(File.Exists(previousPhysicalPath));
+        Assert.Equal(new[] { previousPhysicalPath }, Directory.GetFiles(database.CoversDirectoryPath));
+    }
+
+    [Fact]
+    public async Task UploadCover_WhenPreviousFileCleanupFails_KeepsUpdatedDatabaseAndNewCover()
+    {
+        using var database = new TestDatabase();
+        var previousCoverPath = $"/uploads/covers/{Guid.NewGuid():N}.png";
+        var previousPhysicalPath = database.CreateWebRootFile(previousCoverPath, [4, 5, 6]);
+        var book = database.AddBook(coverImagePath: previousCoverPath);
+        using var stream = new MemoryStream(CreateImageBytes(".png"));
+        using var lockedPreviousCover = new FileStream(
+            previousPhysicalPath,
+            FileMode.Open,
+            FileAccess.Read,
+            FileShare.None);
+        var file = CreateFormFile(stream, "replacement.png", "image/png");
+
+        var result = await database.Controller.UploadCover(book.Id, file);
+
+        Assert.IsType<OkObjectResult>(result);
+        await database.Context.Entry(book).ReloadAsync();
+        Assert.NotEqual(previousCoverPath, book.CoverImagePath);
+        Assert.True(File.Exists(database.GetPhysicalPath(book.CoverImagePath!)));
+        Assert.True(File.Exists(previousPhysicalPath));
+    }
+
+    [Fact]
+    public async Task DeleteBook_WithManagedCover_DeletesCoverAfterDatabaseDeletion()
+    {
+        using var database = new TestDatabase();
+        var coverPath = $"/uploads/covers/{Guid.NewGuid():N}.png";
+        var coverPhysicalPath = database.CreateWebRootFile(coverPath, [4, 5, 6]);
+        var book = database.AddBook(coverImagePath: coverPath);
+
+        var result = await database.Controller.DeleteBook(book.Id);
+
+        Assert.IsType<NoContentResult>(result);
+        Assert.Null(await database.Context.Books.FindAsync(book.Id));
+        Assert.False(File.Exists(coverPhysicalPath));
+    }
+
+    [Fact]
+    public async Task DeleteBook_WithDefaultCover_DoesNotDeleteStaticFile()
+    {
+        using var database = new TestDatabase();
+        const string defaultCoverPath = "/images/default-book-cover.png";
+        var defaultPhysicalPath = database.CreateWebRootFile(defaultCoverPath, [7, 8, 9]);
+        var book = database.AddBook(coverImagePath: defaultCoverPath);
+
+        var result = await database.Controller.DeleteBook(book.Id);
+
+        Assert.IsType<NoContentResult>(result);
+        Assert.True(File.Exists(defaultPhysicalPath));
+    }
+
+    [Fact]
+    public async Task DeleteBook_WithExternalUrl_DoesNotDeleteFilesOutsideManagedDirectory()
+    {
+        using var database = new TestDatabase();
+        var outsidePhysicalPath = database.CreateWebRootFile("/images/external-sentinel.png", [7, 8, 9]);
+        var book = database.AddBook(coverImagePath: "https://example.com/cover.png");
+
+        var result = await database.Controller.DeleteBook(book.Id);
+
+        Assert.IsType<NoContentResult>(result);
+        Assert.True(File.Exists(outsidePhysicalPath));
+    }
+
+    [Fact]
+    public async Task DeleteBook_WithUnmanagedUploadPath_DoesNotDeleteFileOutsideCoversDirectory()
+    {
+        using var database = new TestDatabase();
+        var outsidePhysicalPath = database.CreateWebRootFile("/uploads/unmanaged-cover.png", [7, 8, 9]);
+        var book = database.AddBook(coverImagePath: "/uploads/unmanaged-cover.png");
+
+        var result = await database.Controller.DeleteBook(book.Id);
+
+        Assert.IsType<NoContentResult>(result);
+        Assert.True(File.Exists(outsidePhysicalPath));
+    }
+
+    [Fact]
+    public async Task DeleteBook_WithTraversalInCoverPath_DoesNotDeleteEscapedFile()
+    {
+        using var database = new TestDatabase();
+        var protectedPhysicalPath = database.CreateWebRootFile("/uploads/protected.jpg", [7, 8, 9]);
+        var book = database.AddBook(coverImagePath: "/uploads/covers/../protected.jpg");
+
+        var result = await database.Controller.DeleteBook(book.Id);
+
+        Assert.IsType<NoContentResult>(result);
+        Assert.True(File.Exists(protectedPhysicalPath));
+    }
+
+    [Fact]
+    public async Task DeleteBook_WhenDatabaseDeletionFails_PreservesManagedCover()
+    {
+        using var database = new TestDatabase();
+        var coverPath = $"/uploads/covers/{Guid.NewGuid():N}.png";
+        var coverPhysicalPath = database.CreateWebRootFile(coverPath, [4, 5, 6]);
+        var book = database.AddBook(coverImagePath: coverPath);
+        database.FailNextSaveChangesAsync();
+
+        await Assert.ThrowsAsync<DbUpdateException>(() => database.Controller.DeleteBook(book.Id));
+
+        await database.Context.Entry(book).ReloadAsync();
+        Assert.Equal(coverPath, book.CoverImagePath);
+        Assert.True(File.Exists(coverPhysicalPath));
+    }
+
+    [Fact]
+    public async Task DeleteBook_WhenCoverCleanupFails_StillDeletesBook()
+    {
+        using var database = new TestDatabase();
+        var coverPath = $"/uploads/covers/{Guid.NewGuid():N}.png";
+        var coverPhysicalPath = database.CreateWebRootFile(coverPath, [4, 5, 6]);
+        var book = database.AddBook(coverImagePath: coverPath);
+        using var lockedCover = new FileStream(
+            coverPhysicalPath,
+            FileMode.Open,
+            FileAccess.Read,
+            FileShare.None);
+
+        var result = await database.Controller.DeleteBook(book.Id);
+
+        Assert.IsType<NoContentResult>(result);
+        Assert.Null(await database.Context.Books.FindAsync(book.Id));
+        Assert.True(File.Exists(coverPhysicalPath));
+    }
+
+    [Fact]
     public async Task UpdateBook_WithValidRequest_UpdatesEditableValuesAndReturnsNoContent()
     {
         using var database = new TestDatabase();
@@ -292,6 +439,41 @@ public class BooksControllerTests
         Assert.Equal(250, book.CurrentPage);
         Assert.Equal(InterestLevel.PrimaryInterest, book.InterestLevel);
         Assert.Equal("https://example.com/new.jpg", book.CoverImagePath);
+    }
+
+    [Fact]
+    public async Task UpdateBook_WhenReplacingManagedCover_DeletesPreviousFileAfterDatabaseUpdate()
+    {
+        using var database = new TestDatabase();
+        var previousCoverPath = $"/uploads/covers/{Guid.NewGuid():N}.png";
+        var previousPhysicalPath = database.CreateWebRootFile(previousCoverPath, [4, 5, 6]);
+        var book = database.AddBook(coverImagePath: previousCoverPath);
+        var request = ValidUpdateRequest();
+        request.CoverImagePath = "https://example.com/new.jpg";
+
+        var result = await database.Controller.UpdateBook(book.Id, request);
+
+        Assert.IsType<NoContentResult>(result);
+        Assert.Equal("https://example.com/new.jpg", book.CoverImagePath);
+        Assert.False(File.Exists(previousPhysicalPath));
+    }
+
+    [Fact]
+    public async Task UpdateBook_WhenDatabaseUpdateFails_PreservesPreviousManagedCover()
+    {
+        using var database = new TestDatabase();
+        var previousCoverPath = $"/uploads/covers/{Guid.NewGuid():N}.png";
+        var previousPhysicalPath = database.CreateWebRootFile(previousCoverPath, [4, 5, 6]);
+        var book = database.AddBook(coverImagePath: previousCoverPath);
+        var request = ValidUpdateRequest();
+        request.CoverImagePath = "https://example.com/new.jpg";
+        database.FailNextSaveChangesAsync();
+
+        await Assert.ThrowsAsync<DbUpdateException>(() => database.Controller.UpdateBook(book.Id, request));
+
+        await database.Context.Entry(book).ReloadAsync();
+        Assert.Equal(previousCoverPath, book.CoverImagePath);
+        Assert.True(File.Exists(previousPhysicalPath));
     }
 
     [Fact]
@@ -854,7 +1036,7 @@ public class BooksControllerTests
         private readonly SqliteConnection _connection;
         private readonly string _temporaryDirectory;
 
-        public BookPickerDbContext Context { get; }
+        public FaultInjectingBookPickerDbContext Context { get; }
         public BooksController Controller { get; }
         public string WebRootPath { get; }
         public string CoversDirectoryPath => Path.Combine(WebRootPath, "uploads", "covers");
@@ -873,7 +1055,7 @@ public class BooksControllerTests
             var options = new DbContextOptionsBuilder<BookPickerDbContext>()
                 .UseSqlite(_connection)
                 .Options;
-            Context = new BookPickerDbContext(options);
+            Context = new FaultInjectingBookPickerDbContext(options);
             Context.Database.EnsureCreated();
             Controller = new BooksController(
                 Context,
@@ -905,6 +1087,11 @@ public class BooksControllerTests
             Context.SaveChanges();
         }
 
+        public void FailNextSaveChangesAsync()
+        {
+            Context.FailNextSaveChangesAsync = true;
+        }
+
         public string GetPhysicalPath(string webPath)
         {
             return Path.Combine(
@@ -929,6 +1116,27 @@ public class BooksControllerTests
             {
                 Directory.Delete(_temporaryDirectory, recursive: true);
             }
+        }
+    }
+
+    private sealed class FaultInjectingBookPickerDbContext : BookPickerDbContext
+    {
+        public FaultInjectingBookPickerDbContext(DbContextOptions<BookPickerDbContext> options)
+            : base(options)
+        {
+        }
+
+        public bool FailNextSaveChangesAsync { get; set; }
+
+        public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+        {
+            if (FailNextSaveChangesAsync)
+            {
+                FailNextSaveChangesAsync = false;
+                throw new DbUpdateException("Simulated database update failure.");
+            }
+
+            return base.SaveChangesAsync(cancellationToken);
         }
     }
 
