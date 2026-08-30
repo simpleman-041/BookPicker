@@ -15,6 +15,22 @@ public partial class Program
     {
         var builder = WebApplication.CreateBuilder(args);
 
+        var isRenderHosting = string.Equals(
+            Environment.GetEnvironmentVariable("RENDER"),
+            "true",
+            StringComparison.OrdinalIgnoreCase);
+        var renderPort = Environment.GetEnvironmentVariable("PORT");
+
+        if (!string.IsNullOrWhiteSpace(renderPort))
+        {
+            if (!ushort.TryParse(renderPort, out var port) || port == 0)
+            {
+                throw new InvalidOperationException("PORT must be a valid TCP port number.");
+            }
+
+            builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
+        }
+
         var useForwardedHeaders = builder.Configuration.GetValue<bool>("ForwardedHeaders:Enabled");
         if (useForwardedHeaders)
         {
@@ -106,7 +122,11 @@ public partial class Program
             app.UseForwardedHeaders();
         }
 
-        app.UseHttpsRedirection();
+        // Render terminates HTTPS before forwarding HTTP traffic to the container.
+        if (!isRenderHosting)
+        {
+            app.UseHttpsRedirection();
+        }
 
         app.UseAuthorization();
 
