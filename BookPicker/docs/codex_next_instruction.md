@@ -1,274 +1,242 @@
-今回はYondoku公開デモの公開前セキュリティ確認として、
-表紙画像の保存、置換、削除に関するファイル操作を最終監査してください。
+今回はYondokuをRender Web Serviceで安全に起動できるよう、
+Render向けの実行設定を追加してください。
 
 現在、
 
+Docker
+Demo Mode
+Demo SQLite
+Migration
+Demo Seed 7冊
+Demo専用表紙
 Rate Limiting
 HTTP request body size制限
-IFormFile 5MiB制限
-拡張子検証
-Content-Type検証
 Magic Bytes検証
 XSS監査
+表紙ファイル操作監査
 
 まで完了しています。
 
-XSS監査では追加修正不要という結果でした。
+今回はRenderへの実デプロイ前の最終ランタイム対応です。
 
-今回は表紙画像のファイル操作だけを対象としてください。
-
-Render対応、Demo Seedの表紙追加、UI変更などにはまだ進まないでください。
+まだRender Dashboard上でサービスを作成しないでください。
 
 
 最初に以下を確認してください。
 
-BookPicker/Controllers/BooksController.cs
-表紙アップロードendpoint
-Book削除endpoint
-表紙置換処理
-CoverImagePath更新処理
-古い表紙ファイル削除処理
-wwwroot/uploads/covers
-default coverの扱い
-外部URLの扱い
-関連テスト
+BookPicker/Program.cs
+Dockerfile
+appsettings.json
+appsettings.Development.json
+現在のKestrel待受ポート
+UseHttpsRedirectionの位置
+Rate LimitingのIP partition方法
+YONDOKU_DEMO_MODE
+現在のMiddleware順序
 
 
-1. 表紙置換時の処理順序を監査する
+1. RenderのPORT環境変数へ対応する
 
-新しい表紙へ変更するとき、
+Render Web Serviceでは、
+PORT環境変数で指定されたポートを使用してください。
 
-新しいファイル保存
-DBのCoverImagePath更新
-SaveChanges
-古いアップロードファイル削除
+RenderではPORTの既定値は10000です。
 
-などがどの順番で行われているか確認してください。
+PORTが存在する場合、
 
-DB更新が失敗したことで、
-有効な古い表紙を先に失う構成になっていないか確認してください。
+0.0.0.0
 
-基本的には、
-DBの新しい状態が正常に確定する前に、
-現在有効な古い表紙を破壊しない設計を優先してください。
+でそのポートをListenするようにしてください。
 
+Render以外のローカルDockerでは、
+現在の8080動作を維持してください。
 
-2. 古いファイル削除失敗時の扱い
+現在の設計に最も自然な方法を選択してください。
 
-DB更新には成功したが、
-古い表紙ファイルの物理削除だけ失敗した場合について確認してください。
+Program.cs
+Dockerfile
+ASP.NET CoreのURL設定
 
-このケースで、
-
-新しく保存した表紙
-正常に更新済みのDB
-
-まで不用意に巻き戻して、
-利用可能な状態を壊さないでください。
-
-必要であれば削除失敗をログへ残し、
-孤立ファイルが残る方を、
-DBと表紙参照が壊れる状態より優先してください。
-
-現在の設計がすでに安全なら変更不要です。
+のどこで対応するのが適切か確認し、
+必要最小限の変更にしてください。
 
 
-3. Book削除時の表紙削除
+2. Render環境を判定する
 
-Bookそのものを削除した場合に、
-Yondokuがアップロードした表紙ファイルが適切に削除されるか確認してください。
+Renderが自動設定する
 
-ただし物理ファイル削除失敗によって、
-DB削除処理そのものが危険な中途半端状態にならないよう、
-処理順序と例外処理を確認してください。
+RENDER=true
 
+を利用して、
+Render上で動いているか判断して構いません。
 
-4. 削除してよいファイルを厳密に限定する
+ただし既存の
 
-物理削除の対象は原則として、
+YONDOKU_DEMO_MODE=true
 
-wwwroot/uploads/covers
+とは役割を分けてください。
 
-配下に存在する、
-Yondoku自身がアップロードしたローカル表紙だけにしてください。
+RENDER
+ホスティング環境判定
 
-以下は削除してはいけません。
+YONDOKU_DEMO_MODE
+デモ用DBやSeedの動作判定
 
-default cover
-wwwroot/images以下などアプリ付属の静的画像
-外部https URL
-uploads/covers外のファイル
-不正な相対パス
-親ディレクトリを参照するパス
+という責務を維持してください。
 
 
-5. Path Traversalを再確認する
+3. HTTPS RedirectをRender構成に合わせる
 
-CoverImagePathなどの値から、
-削除対象の物理パスを生成する処理を確認してください。
+Renderは外部HTTPSを終端し、
+HTTPアクセスをRender側でHTTPSへリダイレクトします。
 
-例えば、
+ContainerへはHTTPで転送されます。
 
-../
-..\
+そのためRender環境でUseHttpsRedirectionが
+不要なリダイレクトやHTTPSポート警告を発生させないようにしてください。
 
-などによってuploads/covers外へ脱出できないことを確認してください。
+ローカルVisual Studioでの既存HTTPS開発動作は壊さないでください。
 
-Path.GetFullPathなど現在の.NET標準APIを適切に利用し、
-最終的な物理パスが許可ディレクトリ内部に存在することを確認してください。
-
-文字列の単純なStartsWithだけで危険な判定になっていないかも確認してください。
-
-WindowsとLinuxのパス差も考慮してください。
-
-RenderではLinux Containerで動作する予定です。
+Render環境だけに必要な条件分岐を行う場合は、
+理由が明確になるようにしてください。
 
 
-6. ファイル名を信用しない
+4. Forwarded Headersを無条件に信用しない
 
-現在GUIDなどの安全なサーバー生成ファイル名を利用している方針を維持してください。
+今回の段階では、
 
-アップロード元のユーザーファイル名を、
-物理保存先ファイル名として直接使用しないでください。
+KnownProxies
+KnownNetworks
 
+を無条件にClearして、
+すべてのX-Forwarded-ForやX-Forwarded-Protoを信用する設定にはしないでください。
 
-7. 新規表紙保存失敗時
+ASPNETCORE_FORWARDEDHEADERS_ENABLED=true
 
-新しい表紙ファイルの保存自体に失敗した場合、
-DBのCoverImagePathだけが新しい存在しないファイルを指す状態にならないことを確認してください。
+を安易に追加しないでください。
 
-
-8. DB更新失敗時
-
-新しいファイルの保存には成功したが、
-DB更新に失敗した場合について確認してください。
-
-不要になった新規ファイルを安全にcleanupできる設計か確認してください。
-
-ただしcleanup処理そのものの失敗によって、
-本来のDB例外が分からなくならないようにしてください。
+Renderの実際のProxy情報を確認する前に、
+IP spoofingにつながる設定を導入しないでください。
 
 
-9. 既存セキュリティ対策を維持する
+5. Rate Limiting
 
-以下を壊さないでください。
+現在Rate LimitingはRemoteIpAddressなどを利用して
+IPごとにpartitionしているはずです。
 
+Render初回デプロイ前の段階では、
+Forwarded Headersを安全に処理する方法が確定していない場合、
+現在の安全な挙動を維持してください。
+
+Render上では複数利用者が同じProxy IPとして認識される可能性があることを、
+残課題として明確に報告してください。
+
+この問題を解決するために、
+未確認のX-Forwarded-For値を独自に信用しないでください。
+
+
+6. ローカルRender相当確認
+
+最新Docker Imageをbuildしてください。
+
+可能であればローカルContainerを、
+
+PORT=10000
+RENDER=true
+YONDOKU_DEMO_MODE=true
+
+として起動してください。
+
+ホスト側から10000番ポートへmappingし、
+
+http://localhost:10000
+
+で正常にアクセスできることを確認してください。
+
+
+確認項目
+
+トップページ HTTP 200
+GET /api/books HTTP 200
+Demo Seed 7冊
+Demo専用表紙
+検索
 Rate Limiting
-HTTP request body最大6MiB
-IFormFile最大5MiB
-拡張子検証
-Content-Type検証
-Magic Bytes検証
-GUIDファイル名
-CoverImagePath仕様
+表紙アップロード
+
+が既存どおり動作すること。
 
 
-10. テスト
+7. 通常Docker動作も維持する
 
-最低限以下を確認または追加してください。
-
-通常の表紙アップロード成功
-
-既存アップロード表紙を新しい表紙へ置換した場合、
-古いファイルが安全に削除される
-
-default coverは削除されない
-
-外部URLは削除されない
-
-uploads/covers外のパスは削除されない
-
-Path Traversal形式の値では外部ファイルを削除できない
-
-Book削除時に対象のアップロード表紙をcleanupできる
-
-DB更新失敗時に、
-古い有効表紙を失わない
-
-新規保存後のDB更新失敗時に、
-可能な範囲で孤立した新規ファイルをcleanupする
-
-物理ファイルcleanup失敗によって、
-別の有効データを破壊しない
+RENDERが設定されていない通常Docker環境では、
+現在の8080番ポート動作を壊さないでください。
 
 
-11. DockerとLinux互換性
+8. Render用秘密情報は追加しない
 
-今回のファイルパス処理が、
-Windowsローカルだけでなく、
-Linux Docker Containerでも安全に動作することを確認してください。
+APIキー
+パスワード
+秘密値
 
-パス区切り文字を手書きで前提にせず、
-Path.Combineなど.NET標準APIを利用してください。
+は今回必要ありません。
 
-
-12. 変更方針
-
-監査結果として現在の実装がすでに安全な場合は、
-不要な変更を加えないでください。
-
-問題がある箇所だけ必要最小限に修正してください。
-
-ファイルストレージサービスへの大規模リファクタリングは今回は行わないでください。
+Render用秘密情報をリポジトリへ追加しないでください。
 
 
-13. 検証
+9. render.yaml
+
+今回の段階では、
+render.yamlを必須にはしないでください。
+
+Render Dashboardから最初のデプロイを行う予定です。
+
+Blueprint化が有益と判断しても、
+今回は提案だけに留めてください。
+
+
+10. 既存機能を変更しない
+
+Bookドメイン
+API仕様
+UI
+Demo Seed内容
+画像
+Rate Limit値
+request body制限
+Magic Bytes
+XSS関連
+ファイル削除仕様
+
+には変更を加えないでください。
+
+
+11. 検証
 
 dotnet build
 dotnet test
 
 を実行してください。
 
-コード変更があった場合は最新Docker Imageもbuildし、
-
-YONDOKU_DEMO_MODE=true
-
-でContainerを起動して、
-
-トップページ
-GET /api/books
-Demo Seed 7冊
-通常の表紙アップロード
-
-が正常であることを確認してください。
-
-
-14. 今回変更しないもの
-
-Bookドメイン仕様
-検索
-フィルター
-UI
-Demo Seed内容
-デモ用専用表紙
-Rate Limit値
-request body size値
-XSS関連
-Forwarded Headers
-HTTPS
-Render設定
-認証
-Persistent Volume
-
-には進まないでください。
+Docker Imageをbuildし、
+Render相当環境変数でContainerを起動して確認してください。
 
 
 作業完了後に以下を報告してください。
 
-監査したファイル
-現在の表紙置換処理の順序
-現在のBook削除と表紙cleanupの順序
-危険だった箇所
-変更した箇所
-DB更新失敗時の扱い
-ファイル削除失敗時の扱い
-Path Traversal対策
-default cover保護
-外部URL保護
-Linux Docker上でのパス安全性
-追加したテスト
+変更したファイル
+PORTへの対応方法
+RENDER環境判定方法
+Render環境でのHTTPS Redirectの扱い
+ローカル環境への影響
+Forwarded Headersを今回どう扱ったか
+Rate LimitingのRender上の残課題
+使用したdocker buildコマンド
+使用したdocker runコマンド
+PORT=10000での起動結果
+トップページ確認結果
+GET /api/books確認結果
 全テスト結果
-Docker確認結果
-残っているファイル操作上の課題
+Renderへ実デプロイする前に残っている課題
 
 ここまで完了したら停止してください。

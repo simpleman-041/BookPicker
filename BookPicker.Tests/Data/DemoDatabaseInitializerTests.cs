@@ -39,6 +39,35 @@ public class DemoDatabaseInitializerTests
     }
 
     [Fact]
+    public void ApplyMigrationsAndSeed_AssignsDedicatedStaticCoverImageToEveryDemoBook()
+    {
+        using var database = new DemoDatabase();
+
+        DemoDatabaseInitializer.ApplyMigrationsAndSeed(database.Context);
+
+        var expectedCoverImagePaths = new Dictionary<string, string>
+        {
+            ["休日の美術館さんぽ"] = "/images/demo-covers/demo_cover_01_museum.png",
+            ["データで読む都市の未来"] = "/images/demo-covers/demo_cover_02_city.png",
+            ["料理で旅する世界"] = "/images/demo-covers/demo_cover_03_food.png",
+            ["北の港町ミステリー"] = "/images/demo-covers/demo_cover_04_mystery.png",
+            ["問題解決の設計図"] = "/images/demo-covers/demo_cover_05_problem.png",
+            ["毎日を整える小さな習慣"] = "/images/demo-covers/demo_cover_06_habits.png",
+            ["静かな惑星の観測記録"] = "/images/demo-covers/demo_cover_07_observation.png"
+        };
+
+        var seededBooks = database.Context.Books.ToList();
+
+        Assert.Equal(expectedCoverImagePaths.Count, seededBooks.Count);
+        foreach (var seededBook in seededBooks)
+        {
+            Assert.Equal(
+                expectedCoverImagePaths[seededBook.Title],
+                seededBook.CoverImagePath);
+        }
+    }
+
+    [Fact]
     public void IsEnabled_OnlyReturnsTrueForTrue()
     {
         Assert.True(DemoMode.IsEnabled(CreateConfiguration("true")));
