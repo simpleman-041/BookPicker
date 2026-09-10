@@ -505,7 +505,7 @@ async function applyBookListQueryState(nextQueryState, failureMessage, discardMe
     nextQueryState = syncTitleSearchQueryState(nextQueryState);
     const requestId = ++bookListQueryRequestId;
 
-    bookListQueryState = nextQueryState;
+    bookListQueryState = nextQueryState; 
     setTitleSearchingState(true);
 
     try {
