@@ -20,7 +20,7 @@
 
 ## 画面
 
-![Yondoku メイン画面](docs/images/yondoku-main.png)
+![Yondoku メイン画面](ReadmeImage/yondoku-main.png)
 
 本の一覧、検索、クイック条件、詳細フィルター、本の詳細を1画面から操作できます。
 
@@ -44,7 +44,7 @@
 
 タイトル、総ページ数、ジャンル、興味レベル、表紙画像などを登録できます。
 
-![本の追加画面](docs/images/yondoku-add-book.png)
+![本の追加画面](ReadmeImage/yondoku-add-book.png)
 
 表紙画像は端末からアップロードできます。
 
@@ -62,7 +62,7 @@
 
 タイトル、進捗、ジャンル、興味レベル、読書状態、最後に読んだ日時などを確認できます。
 
-![本の詳細画面](docs/images/yondoku-detail.png)
+![本の詳細画面](ReadmeImage/yondoku-detail.png)
 
 ### 本の編集
 
@@ -70,7 +70,7 @@
 
 タイトル、ページ数、ジャンル、興味レベルなどを変更できます。
 
-![本の編集画面](docs/images/yondoku-edit.png)
+![本の編集画面](ReadmeImage/yondoku-edit.png)
 
 本の削除や読了状態の変更にも対応しています。
 
@@ -136,7 +136,7 @@ Yondokuでは、登録した本を後から探しやすくすることを重視�
 
 アプリ内にも簡単な使い方を確認できるヘルプ画面を用意しています。
 
-![Yondoku 使い方画面](docs/images/yondoku-help.png)
+![Yondoku 使い方画面](ReadmeImage/yondoku-help.png)
 
 基本的な操作は次の流れです。
 
